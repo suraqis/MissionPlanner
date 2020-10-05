@@ -1,12 +1,11 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 public partial class MAVLink
 {
-    public class MAVLinkParamList: List<MAVLinkParam>
+    public class MAVLinkParamList : List<MAVLinkParam>, INotifyPropertyChanged
     {
         object locker = new object();
 
@@ -18,7 +17,7 @@ public partial class MAVLink
         }
 
         public MAVLinkParam this[string name]
-        { 
+        {
             get
             {
                 lock (locker)
@@ -43,13 +42,14 @@ public partial class MAVLink
                         if (item.Name == name)
                         {
                             this[index] = value;
+                            OnPropertyChanged(name);
                             return;
                         }
 
                         index++;
                     }
 
-                    this.Add(value);
+                    base.Add(value);
                 }
             }
         }
@@ -90,10 +90,7 @@ public partial class MAVLink
 
         public new void Add(MAVLinkParam item)
         {
-            lock (locker)
-            {
-                base.Add(item);
-            }
+            this[item.Name] = item;
         }
 
         public new void AddRange(IEnumerable<MAVLinkParam> collection)
@@ -104,7 +101,7 @@ public partial class MAVLink
             }
         }
 
-        public static implicit operator Dictionary<string,double>(MAVLinkParamList list)
+        public static implicit operator Dictionary<string, double>(MAVLinkParamList list)
         {
             var copy = new Dictionary<string, double>();
             foreach (MAVLinkParam item in list.ToArray())
@@ -113,6 +110,13 @@ public partial class MAVLink
             }
 
             return copy;
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 }

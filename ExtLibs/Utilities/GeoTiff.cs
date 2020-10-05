@@ -1,11 +1,13 @@
 ﻿using BitMiracle.LibTiff.Classic;
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using GMap.NET;
 using log4net;
 
@@ -18,10 +20,82 @@ namespace MissionPlanner.Utilities
 
         private static Dictionary<string, float[,]> cache = new Dictionary<string, float[,]>();
 
+        private static List<string> cacheloading = new List<string>();
+
         public static List<geotiffdata> index = new List<geotiffdata>();
 
+        /// <summary>
+        /// http://duff.ess.washington.edu/data/raster/drg/docs/geotiff.txt
+        /// </summary>
         public class geotiffdata
         {
+            enum modeltype
+            {
+                ModelTypeProjected = 1 ,  /* Projection Coordinate System         */
+                ModelTypeGeographic = 2 , /* Geographic latitude-longitude System */
+                ModelTypeGeocentric = 3   /* Geocentric (X,Y,Z) Coordinate System */
+            }
+
+            enum rastertype
+            {
+                RasterPixelIsArea = 1,
+                RasterPixelIsPoint = 2
+            }
+
+            enum GKID
+            {
+                GTModelTypeGeoKey = 1024, /* Section 6.3.1.1 Codes       */
+                GTRasterTypeGeoKey = 1025, /* Section 6.3.1.2 Codes       */
+                GTCitationGeoKey = 1026, /* documentation */
+
+                GeographicTypeGeoKey = 2048, /* Section 6.3.2.1 Codes     */
+                GeogCitationGeoKey = 2049, /* documentation             */
+                GeogGeodeticDatumGeoKey = 2050, /* Section 6.3.2.2 Codes     */
+                GeogPrimeMeridianGeoKey = 2051, /* Section 6.3.2.4 codes     */
+                GeogLinearUnitsGeoKey = 2052, /* Section 6.3.1.3 Codes     */
+                GeogLinearUnitSizeGeoKey = 2053, /* meters                    */
+                GeogAngularUnitsGeoKey = 2054, /* Section 6.3.1.4 Codes     */
+
+
+                GeogAngularUnitSizeGeoKey = 2055, /* radians                   */
+                GeogEllipsoidGeoKey = 2056, /* Section 6.3.2.3 Codes     */
+                GeogSemiMajorAxisGeoKey = 2057, /* GeogLinearUnits           */
+                GeogSemiMinorAxisGeoKey = 2058, /* GeogLinearUnits           */
+                GeogInvFlatteningGeoKey = 2059, /* ratio                     */
+                GeogAzimuthUnitsGeoKey = 2060, /* Section 6.3.1.4 Codes     */
+                GeogPrimeMeridianLongGeoKey = 2061, /* GeogAngularUnit           */
+
+                ProjectedCSTypeGeoKey = 3072, /* Section 6.3.3.1 codes   */
+                PCSCitationGeoKey = 3073, /* documentation           */
+                ProjectionGeoKey = 3074, /* Section 6.3.3.2 codes   */
+                ProjCoordTransGeoKey = 3075, /* Section 6.3.3.3 codes   */
+                ProjLinearUnitsGeoKey = 3076, /* Section 6.3.1.3 codes   */
+                ProjLinearUnitSizeGeoKey = 3077, /* meters                  */
+                ProjStdParallelGeoKey = 3078, /* GeogAngularUnit */
+                ProjStdParallel2GeoKey = 3079, /* GeogAngularUnit */
+                ProjOriginLongGeoKey = 3080, /* GeogAngularUnit */
+                ProjOriginLatGeoKey = 3081, /* GeogAngularUnit */
+                ProjFalseEastingGeoKey = 3082, /* ProjLinearUnits */
+                ProjFalseNorthingGeoKey = 3083, /* ProjLinearUnits */
+                ProjFalseOriginLongGeoKey = 3084, /* GeogAngularUnit */
+                ProjFalseOriginLatGeoKey = 3085, /* GeogAngularUnit */
+                ProjFalseOriginEastingGeoKey = 3086, /* ProjLinearUnits */
+                ProjFalseOriginNorthingGeoKey = 3087, /* ProjLinearUnits */
+                ProjCenterLongGeoKey = 3088, /* GeogAngularUnit */
+                ProjCenterLatGeoKey = 3089, /* GeogAngularUnit */
+                ProjCenterEastingGeoKey = 3090, /* ProjLinearUnits */
+                ProjCenterNorthingGeoKey = 3091, /* ProjLinearUnits */
+                ProjScaleAtOriginGeoKey = 3092, /* ratio   */
+                ProjScaleAtCenterGeoKey = 3093, /* ratio   */
+                ProjAzimuthAngleGeoKey = 3094, /* GeogAzimuthUnit */
+                ProjStraightVertPoleLongGeoKey = 3095, /* GeogAngularUnit */
+
+                VerticalCSTypeGeoKey = 4096, /* Section 6.3.4.1 codes   */
+                VerticalCitationGeoKey = 4097, /* documentation */
+                VerticalDatumGeoKey = 4098, /* Section 6.3.4.2 codes   */
+                VerticalUnitsGeoKey = 4099, /* Section 6.3.1.3 codes   */
+            }
+
             public bool LoadFile(string filename)
             {
                 FileName = filename;
@@ -36,6 +110,52 @@ namespace MissionPlanner.Utilities
 
                     var modelscale = tiff.GetField(TiffTag.GEOTIFF_MODELPIXELSCALETAG);
                     var tiepoint = tiff.GetField(TiffTag.GEOTIFF_MODELTIEPOINTTAG);
+
+                    var GeoKeyDirectoryTag = tiff.GetField((TiffTag)34735);
+
+                    var KeyDirectoryVersion = BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), 0);
+                    var KeyRevision= BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), 2);
+                    var MinorRevision= BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), 4);
+                    var NumberOfKeys = BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), 6);
+
+                    var ProjectedCSTypeGeoKey = 0;
+
+                    for (int i = 8; i < 8 + NumberOfKeys * 8;i+=8)
+                    {
+                        var KeyID = BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), i);
+                        var TIFFTagLocation = BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), i + 2);
+                        var Count = BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), i + 4);
+                        var Value_Offset = BitConverter.ToUInt16(GeoKeyDirectoryTag[1].ToByteArray(), i + 6);
+
+                        log.InfoFormat("GeoKeyDirectoryTag ID={0} TagLoc={1} Count={2} Value/offset={3}", (GKID)KeyID, TIFFTagLocation,
+                            Count, Value_Offset);
+
+                        if (KeyID == (int)GKID.ProjectedCSTypeGeoKey)
+                            ProjectedCSTypeGeoKey = Value_Offset;
+
+                        if (TIFFTagLocation != 0)
+                        {
+                            if (TIFFTagLocation == 34737)
+                            {
+                                var value = tiff.GetField((TiffTag) TIFFTagLocation)[1].ToByteArray().Skip(Value_Offset)
+                                    .Take(Count);
+                                log.InfoFormat("GeoKeyDirectoryTag ID={0} Value={1}", (GKID) KeyID,
+                                    Encoding.ASCII.GetString(value.ToArray()));
+                            }
+                            if (TIFFTagLocation == 34736)
+                            {
+                                /*
+                                var value = tiff.GetField((TiffTag)TIFFTagLocation)[1].ToByteArray().Skip(Value_Offset*8)
+                                    .Take(Count*8);
+                                log.InfoFormat("GeoKeyDirectoryTag ID={0} Value={1}", (GKID) KeyID, value);
+                                */
+                            }
+                        }
+                    }
+
+                    var GeoAsciiParamsTag = tiff.GetField((TiffTag)34737);
+                    if (GeoAsciiParamsTag != null && GeoAsciiParamsTag.Length == 2)
+                        log.InfoFormat("GeoAsciiParamsTag {0}", GeoAsciiParamsTag[1]);
 
                     i = BitConverter.ToDouble(tiepoint[1].ToByteArray(), 0);
                     j = BitConverter.ToDouble(tiepoint[1].ToByteArray(), 0 + 8);
@@ -52,6 +172,35 @@ namespace MissionPlanner.Utilities
 
                     log.InfoFormat("Scale ({0},{1},{2})", xscale, yscale, zscale);
 
+                    // wgs84 utm
+                    if (ProjectedCSTypeGeoKey >= 32601 && ProjectedCSTypeGeoKey <= 32760)
+                    {
+                        if (ProjectedCSTypeGeoKey > 32700)
+                        {
+                            var pnt =PointLatLngAlt.FromUTM((ProjectedCSTypeGeoKey - 32700) * -1, x, y);
+                            var pnt2 = PointLatLngAlt.FromUTM((ProjectedCSTypeGeoKey - 32700) * -1, x + width * xscale,
+                                y + height * yscale);
+
+                            y = pnt.Lat;
+                            x = pnt.Lng;
+                            xscale = (pnt2.Lng - pnt.Lng) / width;
+                            yscale = (pnt2.Lat - pnt.Lat) / height;
+
+                        }
+
+                        if (ProjectedCSTypeGeoKey < 32700)
+                        {
+                            var pnt = PointLatLngAlt.FromUTM((ProjectedCSTypeGeoKey - 32600), x, y);
+                            var pnt2 = PointLatLngAlt.FromUTM((ProjectedCSTypeGeoKey - 32600), x + width * xscale,
+                                y + height * yscale);
+
+                            y = pnt.Lat;
+                            x = pnt.Lng;
+                            xscale = (pnt2.Lng - pnt.Lng) / width;
+                            yscale = (pnt2.Lat - pnt.Lat) / height;
+                        }
+                    }
+
                     Area = new RectLatLng(y, x, width*xscale, height*yscale);
 
                     log.InfoFormat("Coverage {0}", Area.ToString());
@@ -64,7 +213,8 @@ namespace MissionPlanner.Utilities
 
                     log.InfoFormat("Start Point ({0},{1},{2}) --> ({3},{4},{5})", i, j, k, x, y, z);
 
-                    GeoTiff.index.Add(this);
+                    lock (index)
+                        GeoTiff.index.Add(this);
 
                     /*
 
@@ -92,7 +242,16 @@ namespace MissionPlanner.Utilities
                 return true;
             }
 
-            public bool cacheable {get { return new FileInfo(FileName).Length < 1024*1024*1000; }}
+            private long size = -1;
+
+            public bool cacheable
+            {
+                get
+                {
+                    if (size == -1) size = new FileInfo(FileName).Length;
+                    return size < 1024 * 1024 * 1000;
+                }
+            }
 
             public string FileName;
             public int width;
@@ -139,43 +298,120 @@ namespace MissionPlanner.Utilities
 
         public static srtm.altresponce getAltitude(double lat, double lng, double zoom = 16)
         {
-            if (index.Count == 0)
+            lock (index)
+                if (index.Count == 0)
                 return srtm.altresponce.Invalid;
 
             var answer = new srtm.altresponce();
 
-            foreach (var geotiffdata in index)
+            foreach (var geotiffdata in index.ToArray())
             {
                 if (geotiffdata.Area.Contains(lat, lng))
                 {
                     // add to cache
                     if (!cache.ContainsKey(geotiffdata.FileName) && geotiffdata.cacheable)
                     {
-                        float[,] altdata = new float[geotiffdata.height, geotiffdata.width];
+                        if (!File.Exists(geotiffdata.FileName))
+                            continue;
 
-                        using (Tiff tiff = Tiff.Open(geotiffdata.FileName, "r"))
+                        lock (cacheloading)
                         {
-                            byte[] scanline = new byte[tiff.ScanlineSize()];
+                            if (cacheloading.Contains(geotiffdata.FileName))
+                                return srtm.altresponce.Invalid;
 
-                            for (int row = 0; row < geotiffdata.height; row++)
+                            cacheloading.Add(geotiffdata.FileName);
+                        }
+
+                        Task.Run(() => { 
+                        try
+                        {
+                            float[,] altdata = new float[geotiffdata.height, geotiffdata.width];
+
+                            using (Tiff tiff = Tiff.Open(geotiffdata.FileName, "r"))
                             {
-                                tiff.ReadScanline(scanline, row);
-
-                                for (int col = 0; col < geotiffdata.width; col++)
+                                if (tiff.GetField(TiffTag.TILEWIDTH) != null &&
+                                    tiff.GetField(TiffTag.TILEWIDTH).Length >= 1)
                                 {
-                                    if (geotiffdata.bits == 16)
+                                    FieldValue[] value = tiff.GetField(TiffTag.IMAGEWIDTH);
+                                    int imageWidth = value[0].ToInt();
+
+                                    value = tiff.GetField(TiffTag.IMAGELENGTH);
+                                    int imageLength = value[0].ToInt();
+
+                                    value = tiff.GetField(TiffTag.TILEWIDTH);
+                                    int tileWidth = value[0].ToInt();
+
+                                    value = tiff.GetField(TiffTag.TILELENGTH);
+                                    int tileLength = value[0].ToInt();
+
+                                    byte[] buf = new byte[tiff.TileSize()];
+                                    for (int y = 0; y < imageLength; y += tileLength)
                                     {
-                                        altdata[row, col] = (short) ((scanline[col*2 + 1] << 8) + scanline[col*2]);
+                                        for (int x = 0; x < imageWidth; x += tileWidth)
+                                        {
+                                            tiff.ReadTile(buf, 0, x, y, 0, 0);
+
+                                            for (int row = 0; row < tileLength; row++)
+                                            {
+                                                for (int col = 0; col < tileWidth; col++)
+                                                {
+                                                    if (x + col >= imageWidth || y + row >= imageLength)
+                                                        break;
+
+                                                    if (geotiffdata.bits == 16)
+                                                    {
+                                                        altdata[y + row, x + col] =
+                                                            (short) ((buf[row * tileWidth * 2 + col * 2 + 1] << 8) +
+                                                                     buf[row * tileWidth * 2 + col * 2]);
+                                                    }
+                                                    else if (geotiffdata.bits == 32)
+                                                    {
+                                                        altdata[y + row, x + col] =
+                                                            (float) BitConverter.ToSingle(buf,
+                                                                row * tileWidth * 4 + col * 4);
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                    else if (geotiffdata.bits == 32)
+                                }
+                                else
+                                {
+
+                                    byte[] scanline = new byte[tiff.ScanlineSize()];
+
+                                    for (int row = 0; row < geotiffdata.height; row++)
                                     {
-                                        altdata[row, col] = (float) BitConverter.ToSingle(scanline, col*4);
+                                        tiff.ReadScanline(scanline, row);
+
+                                        for (int col = 0; col < geotiffdata.width; col++)
+                                        {
+                                            if (geotiffdata.bits == 16)
+                                            {
+                                                altdata[row, col] =
+                                                    (short) ((scanline[col * 2 + 1] << 8) + scanline[col * 2]);
+                                            }
+                                            else if (geotiffdata.bits == 32)
+                                            {
+                                                altdata[row, col] = (float) BitConverter.ToSingle(scanline, col * 4);
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        cache[geotiffdata.FileName] = altdata;
+                            cache[geotiffdata.FileName] = altdata;
+                        }
+                        finally
+                        {
+                            lock (cacheloading)
+                            {
+                                cacheloading.Remove(geotiffdata.FileName);
+                            }
+                        }
+                        });
+
+                        return srtm.altresponce.Invalid;
                     }
 
                     // get answer
@@ -201,6 +437,8 @@ namespace MissionPlanner.Utilities
 
                     if (v > -1000)
                         answer.currenttype = srtm.tiletype.valid;
+                    if(alt00 < -1000 || alt10 < -1000 || alt01 < -1000 || alt11 < -1000 )
+                        answer.currenttype = srtm.tiletype.invalid;
                     answer.alt = v;
                     answer.altsource = "GeoTiff";
                     return answer;

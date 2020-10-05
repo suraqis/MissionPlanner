@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Runtime.Serialization;
 
 public partial class MAVLink
 {
@@ -52,10 +50,12 @@ public partial class MAVLink
         short int16_value { get { return BitConverter.ToInt16(data, 0); } }
         UInt32 uint32_value { get { return BitConverter.ToUInt32(data, 0); } }
         Int32 int32_value { get { return BitConverter.ToInt32(data, 0); } }
+        [IgnoreDataMember]
         public float float_value { get { return BitConverter.ToSingle(data, 0); } }
 
         byte[] _data = new byte[4];
 
+        [IgnoreDataMember]
         public byte[] data
         {
             get { return _data; }
@@ -71,11 +71,11 @@ public partial class MAVLink
         /// </summary>
         /// <param name="name"></param>
         /// <param name="value"></param>
-        /// <param name="type"></param>
-        public MAVLinkParam(string name, double value, MAV_PARAM_TYPE type)
+        /// <param name="wiretype"></param>
+        public MAVLinkParam(string name, double value, MAV_PARAM_TYPE wiretype)
         {
             Name = name;
-            Type = type;
+            Type = wiretype;
             Value = value;
         }
 
@@ -84,12 +84,12 @@ public partial class MAVLink
         /// </summary>
         /// <param name="name"></param>
         /// <param name="inputwire"></param>
-        /// <param name="type"></param>
+        /// <param name="wiretype"></param>
         /// <param name="typeap"></param>
-        public MAVLinkParam(string name, byte[] inputwire, MAV_PARAM_TYPE type, MAV_PARAM_TYPE typeap)
+        public MAVLinkParam(string name, byte[] inputwire, MAV_PARAM_TYPE wiretype, MAV_PARAM_TYPE typeap)
         {
             Name = name;
-            Type = type;
+            Type = wiretype;
             TypeAP = typeap;
             Array.Copy(inputwire, _data, 4);
         }

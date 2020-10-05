@@ -1,27 +1,14 @@
-﻿using System;
+﻿using log4net;
+using MissionPlanner.Utilities;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Reflection;
-using System.Text;
-using System.Windows.Forms;
-using System.IO.Ports;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
-using KMLib;
-using KMLib.Feature;
-using KMLib.Geometry;
-using Core.Geometry;
-using ICSharpCode.SharpZipLib.Zip;
-using ICSharpCode.SharpZipLib.Checksums;
-using ICSharpCode.SharpZipLib.Core;
-using log4net;
-using MissionPlanner.Comms;
-using MissionPlanner.Utilities;
-using System.Diagnostics;
-using System.Threading;
+using System.Reflection;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace MissionPlanner.Log
 {
@@ -58,12 +45,15 @@ namespace MissionPlanner.Log
 
             ThemeManager.ApplyThemeTo(this);
 
-            MissionPlanner.Utilities.Tracking.AddPage(this.GetType().ToString(), this.Text);            
+            MissionPlanner.Utilities.Tracking.AddPage(this.GetType().ToString(), this.Text);
         }
 
         private void Log_Load(object sender, EventArgs e)
         {
             LoadLogList();
+
+            if (MainV2.comPort.MAV.cs.armed)
+                CustomMessageBox.Show("Please disarm the drone before downloading logs!", Strings.ERROR);
         }
 
         void LoadLogList()
@@ -195,28 +185,24 @@ namespace MissionPlanner.Log
                         delegate ()
                         {
                             DownloadThread(toDownload);
-                        });
-                t11.Name = "Log Download All thread";
+                        })
+                    {
+                        Name = "Log Download All thread"
+                    };
                 t11.Start();
             }
         }
 
-        string GetLog(ushort no, string fileName)
+        async Task<string> GetLog(ushort no, string fileName)
         {
             log.Info("GetLog " + no);
 
-            MainV2.comPort.Progress += comPort_Progress;
+            MainV2.comPort.Progress += ComPort_Progress;
 
             status = SerialStatus.Reading;
 
-            // used for log fn
-            MAVLink.MAVLinkMessage hbpacket = MainV2.comPort.getHeartBeat();
-
-            if (hbpacket != null)
-                log.Info("Got hbpacket length: " + hbpacket.Length);
-
             // get df log from mav
-            using (var ms = MainV2.comPort.GetLog(no))
+            using (var ms = await MainV2.comPort.GetLog(no).ConfigureAwait(false))
             {
                 if (ms != null)
                     log.Info("Got Log length: " + ms.Length);
@@ -225,11 +211,9 @@ namespace MissionPlanner.Log
 
                 status = SerialStatus.Done;
 
-                MAVLink.mavlink_heartbeat_t hb = (MAVLink.mavlink_heartbeat_t)MainV2.comPort.DebugPacket(hbpacket);
-
                 logfile = Settings.Instance.LogDir + Path.DirectorySeparatorChar
                           + MainV2.comPort.MAV.aptype.ToString() + Path.DirectorySeparatorChar
-                          + hbpacket.sysid + Path.DirectorySeparatorChar + no + " " + MakeValidFileName(fileName) + ".bin";
+                          + MainV2.comPort.MAV.sysid + Path.DirectorySeparatorChar + no + " " + MakeValidFileName(fileName) + ".bin";
 
                 // make log dir
                 Directory.CreateDirectory(Path.GetDirectoryName(logfile));
@@ -258,14 +242,14 @@ namespace MissionPlanner.Log
             // rename file if needed
             log.Info("about to GetFirstGpsTime: " + logfile);
             // get gps time of assci log
-            DateTime logtime = new DFLog().GetFirstGpsTime(logfile);
+            DateTime logtime = new DFLog(null).GetFirstGpsTime(logfile);
 
             // rename log is we have a valid gps time
             if (logtime != DateTime.MinValue)
             {
                 string newlogfilename = Settings.Instance.LogDir + Path.DirectorySeparatorChar
                                         + MainV2.comPort.MAV.aptype.ToString() + Path.DirectorySeparatorChar
-                                        + hbpacket.sysid + Path.DirectorySeparatorChar +
+                                        + MainV2.comPort.MAV.sysid + Path.DirectorySeparatorChar +
                                         logtime.ToString("yyyy-MM-dd HH-mm-ss") + ".log";
                 try
                 {
@@ -281,7 +265,7 @@ namespace MissionPlanner.Log
                 }
             }
 
-            MainV2.comPort.Progress -= comPort_Progress;
+            MainV2.comPort.Progress -= ComPort_Progress;
 
             return logfile;
         }
@@ -289,7 +273,7 @@ namespace MissionPlanner.Log
         protected override void OnClosed(EventArgs e)
         {
             this.closed = true;
-            MainV2.comPort.Progress -= comPort_Progress;
+            MainV2.comPort.Progress -= ComPort_Progress;
 
             base.OnClosed(e);
         }
@@ -299,7 +283,7 @@ namespace MissionPlanner.Log
             if (status == SerialStatus.Reading)
             {
                 if (CustomMessageBox.Show(LogStrings.CancelDownload, "Cancel Download", MessageBoxButtons.YesNo) ==
-                    System.Windows.Forms.DialogResult.No)
+                    (int)System.Windows.Forms.DialogResult.No)
                 {
                     e.Cancel = true;
                     return;
@@ -314,7 +298,7 @@ namespace MissionPlanner.Log
             return fileName.Replace('/', '-').Replace('\\', '-').Replace(':', '-').Replace('?', ' ').Replace('"', '\'').Replace('<', '[').Replace('>', ']').Replace('|', ' ');
         }
 
-        void comPort_Progress(int progress, string status)
+        void ComPort_Progress(int progress, string status)
         {
             receivedbytes = (uint)progress;
 
@@ -346,7 +330,7 @@ namespace MissionPlanner.Log
             status = SerialStatus.Done;
         }
 
-        private void DownloadThread(int[] selectedLogs)
+        private async void DownloadThread(int[] selectedLogs)
         {
             try
             {
@@ -369,13 +353,13 @@ namespace MissionPlanner.Log
 
                     AppendSerialLog(string.Format(LogStrings.FetchingLog, fileName));
 
-                    var logname = GetLog(entry.id, fileName);
+                    var logname = await GetLog(entry.id, fileName).ConfigureAwait(false);
 
                     CreateLog(logname);
 
                     tallyBytes += receivedbytes;
                     receivedbytes = 0;
-                    UpdateProgress(0, totalBytes, tallyBytes);                    
+                    UpdateProgress(0, totalBytes, tallyBytes);
                 }
 
                 UpdateProgress(0, totalBytes, totalBytes);
@@ -446,8 +430,10 @@ namespace MissionPlanner.Log
                 {
                     BUT_DLall.Enabled = false;
                     BUT_DLthese.Enabled = false;
-                    System.Threading.Thread t11 = new System.Threading.Thread(delegate () { DownloadThread(toDownload); });
-                    t11.Name = "Log download single thread";
+                    System.Threading.Thread t11 = new System.Threading.Thread(delegate () { DownloadThread(toDownload); })
+                    {
+                        Name = "Log download single thread"
+                    };
                     t11.Start();
                 }
             }
@@ -456,7 +442,7 @@ namespace MissionPlanner.Log
         private void BUT_clearlogs_Click(object sender, EventArgs e)
         {
             if (CustomMessageBox.Show(LogStrings.Confirmation, "sure", MessageBoxButtons.YesNo) ==
-                System.Windows.Forms.DialogResult.Yes)
+                (int)System.Windows.Forms.DialogResult.Yes)
             {
                 try
                 {
@@ -498,14 +484,13 @@ namespace MissionPlanner.Log
                         LogOutput lo = new LogOutput();
                         try
                         {
-                            TextReader tr = new StreamReader(logfile);
-
-                            while (tr.Peek() != -1)
+                            using (TextReader tr = new StreamReader(logfile))
                             {
-                                lo.processLine(tr.ReadLine());
+                                while (tr.Peek() != -1)
+                                {
+                                    lo.processLine(tr.ReadLine());
+                                }
                             }
-
-                            tr.Close();
                         }
                         catch (Exception ex)
                         {
@@ -585,7 +570,7 @@ namespace MissionPlanner.Log
         {
             using (OpenFileDialog ofd = new OpenFileDialog())
             {
-                ofd.Filter = "Binary Log|*.bin";
+                ofd.Filter = "Binary Log|*.bin;*.BIN";
 
                 ofd.ShowDialog();
 
@@ -593,7 +578,7 @@ namespace MissionPlanner.Log
                 {
                     using (SaveFileDialog sfd = new SaveFileDialog())
                     {
-                        sfd.Filter = "log|*.log";
+                        sfd.Filter = "log|*.log;*.LOG";
 
                         DialogResult res = sfd.ShowDialog();
 

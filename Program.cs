@@ -1,46 +1,84 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Windows.Forms;
-using System.Net;
-using System.IO;
-using System.Text;
-using System.Threading;
+﻿using GMap.NET.MapProviders;
 using log4net;
 using log4net.Config;
-using System.Diagnostics;
-using System.Linq;
-using MissionPlanner.Utilities;
-using MissionPlanner;
-using System.Drawing;
-using System.Runtime.CompilerServices;
-using System.Text.RegularExpressions;
 using MissionPlanner.Comms;
 using MissionPlanner.Controls;
+using MissionPlanner.Utilities;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Management;
+using System.Net;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Windows.Forms;
+#if !LIB
+using JetBrains.Profiler.Api;
+using JetBrains.Profiler.SelfApi;
+#endif
+using Microsoft.Diagnostics.Runtime;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
+using Architecture = System.Runtime.InteropServices.Architecture;
+using Trace = System.Diagnostics.Trace;
 
 namespace MissionPlanner
 {
     public static class Program
     {
-        private static readonly ILog log = LogManager.GetLogger("Program");
+        private static readonly ILog log = LogManager.GetLogger(typeof(Program));
 
         public static DateTime starttime = DateTime.Now;
 
         public static string name { get; internal set; }
 
-        public static bool WindowsStoreApp { get { return Application.ExecutablePath.Contains("WindowsApps"); } }
+        public static bool WindowsStoreApp
+        {
+            get { return Application.ExecutablePath.Contains("WindowsApps"); }
+        }
 
+        /// <summary>
+        /// MissionPlanner text image
+        /// </summary>
         public static Image Logo = null;
+        /// <summary>
+        /// Ardupilot logo
+        /// </summary>
+        public static Image Logo2 = null;
+        /// <summary>
+        /// icon
+        /// </summary>
         public static Image IconFile = null;
 
         public static Splash Splash;
 
         internal static Thread Thread;
 
-        public static string[] args = new string[] {};
+        public static string[] args = new string[] { };
         public static Bitmap SplashBG = null;
 
         public static string[] names = new string[] { "VVVVZ" };
         public static bool MONO = false;
+
+        static Program()
+        {
+            AppDomain.CurrentDomain.AssemblyLoad += CurrentDomain_AssemblyLoad;
+
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+
+            AppDomain.CurrentDomain.TypeResolve += CurrentDomain_TypeResolve;
+
+            AppDomain.CurrentDomain.FirstChanceException += CurrentDomain_FirstChanceException;
+
+            //AppDomain.CurrentDomain.AssemblyResolve += Resolver;
+        }
 
         /// <summary>
         /// The main entry point for the application.
@@ -48,35 +86,72 @@ namespace MissionPlanner
         [STAThread]
         public static void Main(string[] args)
         {
+            Start(args);
+        }
+
+        public static async void TraceMe(bool start = true)
+        {
+#if !LIB
+            if (start)
+            {
+                await DotTrace.EnsurePrerequisiteAsync();
+                Directory.CreateDirectory("C:\\Temp\\Snapshot");
+                var config = new DotTrace.Config();
+                config.SaveToDir("C:\\Temp\\Snapshot");
+                DotTrace.Attach(config);
+                DotTrace.StartCollectingData();
+            }
+            else
+            {
+                DotTrace.StopCollectingData();
+                DotTrace.SaveData();
+            }
+#endif
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void Start(string[] args)
+        {
             Program.args = args;
             Console.WriteLine(
                 "If your error is about Microsoft.DirectX.DirectInput, please install the latest directx redist from here http://www.microsoft.com/en-us/download/details.aspx?id=35 \n\n");
             Console.WriteLine("Debug under mono    MONO_LOG_LEVEL=debug mono MissionPlanner.exe");
+            Console.WriteLine("To fix any filename case issues under mono use    export MONO_IOMAP=drive:case");
+
+            Console.WriteLine("Data Dir " + Settings.GetDataDirectory());
+            Console.WriteLine("Log Dir " + Settings.GetDefaultLogDir());
+            Console.WriteLine("Running Dir " + Settings.GetRunningDirectory());
+            Console.WriteLine("User Data Dir " + Settings.GetUserDataDirectory());
 
             var t = Type.GetType("Mono.Runtime");
             MONO = (t != null);
 
+            Directory.SetCurrentDirectory(Settings.GetRunningDirectory());
+
+            var listener = new TextWriterTraceListener(Settings.GetDataDirectory() + Path.DirectorySeparatorChar + "trace.log",
+                "defaulttrace");
+
+            if (args.Any(a=>a.Contains("trace")))
+                Trace.Listeners.Add(listener);
+
             Thread = Thread.CurrentThread;
 
             System.Windows.Forms.Application.EnableVisualStyles();
-            XmlConfigurator.Configure();
+            XmlConfigurator.Configure(LogManager.GetRepository(Assembly.GetCallingAssembly()));
             log.Info("******************* Logging Configured *******************");
-            System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
 
             ServicePointManager.DefaultConnectionLimit = 10;
 
             System.Windows.Forms.Application.ThreadException += Application_ThreadException;
 
-            AppDomain.CurrentDomain.UnhandledException +=
-                new UnhandledExceptionEventHandler(CurrentDomain_UnhandledException);
-
-            // fix ssl on mono
-            ServicePointManager.ServerCertificateValidationCallback =
-                new System.Net.Security.RemoteCertificateValidationCallback(
-                    (sender, certificate, chain, policyErrors) => { return true; });
-
             if (args.Length > 0 && args[0] == "/update")
             {
+                Utilities.Update.DoUpdate();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "/updatebeta")
+            {
+                Utilities.Update.dobeta = true;
                 Utilities.Update.DoUpdate();
                 return;
             }
@@ -96,6 +171,9 @@ namespace MissionPlanner
             if (File.Exists(Settings.GetRunningDirectory() + "logo.png"))
                 Logo = new Bitmap(Settings.GetRunningDirectory() + "logo.png");
 
+            if (File.Exists(Settings.GetRunningDirectory() + "logo2.png"))
+                Logo2 = new Bitmap(Settings.GetRunningDirectory() + "logo2.png");
+
             if (File.Exists(Settings.GetRunningDirectory() + "icon.png"))
             {
                 // 128*128
@@ -109,6 +187,27 @@ namespace MissionPlanner
             if (File.Exists(Settings.GetRunningDirectory() + "splashbg.png")) // 600*375
                 SplashBG = new Bitmap(Settings.GetRunningDirectory() + "splashbg.png");
 
+            try
+            {
+                var file = MissionPlanner.Utilities.NativeLibrary.GetLibraryPathname("libSkiaSharp");
+                log.Info(file);
+                IntPtr ptr = IntPtr.Zero;
+
+                if (MONO)
+                    ptr = MissionPlanner.Utilities.NativeLibrary.dlopen(file + ".so",
+                        MissionPlanner.Utilities.NativeLibrary.RTLD_NOW);
+                if (ptr == IntPtr.Zero)
+                    ptr = MissionPlanner.Utilities.NativeLibrary.LoadLibrary(file + ".dll");
+
+                if (ptr != IntPtr.Zero)
+                {
+                    log.Info("SkiaLoaded");
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex);
+            }
 
             Splash = new MissionPlanner.Splash();
             if (SplashBG != null)
@@ -120,15 +219,26 @@ namespace MissionPlanner
             if (IconFile != null)
                 Splash.Icon = Icon.FromHandle(((Bitmap)IconFile).GetHicon());
 
-            string strVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
+            string strVersion = File.Exists("version.txt")
+                ? File.ReadAllText("version.txt")
+                : System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
             Splash.Text = name + " " + Application.ProductVersion + " build " + strVersion;
             Splash.Show();
 
+            if (Debugger.IsAttached)
+                Splash.TopMost = false;
+
             Application.DoEvents();
             Application.DoEvents();
 
+            CustomMessageBox.ShowEvent += (text, caption, buttons, icon, yestext, notext) =>
+                {
+                    return (CustomMessageBox.DialogResult)(int)MsgBox.CustomMessageBox.Show(text, caption,
+                        (MessageBoxButtons)(int)buttons, (MessageBoxIcon)(int)icon, yestext, notext);
+                };
+
             // setup theme provider
-            CustomMessageBox.ApplyTheme += MissionPlanner.Utilities.ThemeManager.ApplyThemeTo;
+            MsgBox.CustomMessageBox.ApplyTheme += MissionPlanner.Utilities.ThemeManager.ApplyThemeTo;
             Controls.MainSwitcher.ApplyTheme += MissionPlanner.Utilities.ThemeManager.ApplyThemeTo;
             MissionPlanner.Controls.InputBox.ApplyTheme += MissionPlanner.Utilities.ThemeManager.ApplyThemeTo;
             Controls.BackstageView.BackstageViewPage.ApplyTheme += MissionPlanner.Utilities.ThemeManager.ApplyThemeTo;
@@ -140,6 +250,9 @@ namespace MissionPlanner
             MissionPlanner.Comms.CommsBase.Settings += CommsBase_Settings;
             MissionPlanner.Comms.CommsBase.InputBoxShow += CommsBaseOnInputBoxShow;
             MissionPlanner.Comms.CommsBase.ApplyTheme += MissionPlanner.Utilities.ThemeManager.ApplyThemeTo;
+            MissionPlanner.Comms.SerialPort.GetDeviceName += SerialPort_GetDeviceName;
+
+            MissionPlanner.Utilities.Extensions.MessageLoop = new Action(() => Application.DoEvents());
 
             // set the cache provider to my custom version
             GMap.NET.GMaps.Instance.PrimaryCache = new Maps.MyImageCache();
@@ -148,8 +261,32 @@ namespace MissionPlanner
             GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Custom.Instance);
             GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Earthbuilder.Instance);
             GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Statkart_Topo2.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Eniro_Topo.Instance);
             GMap.NET.MapProviders.GMapProviders.List.Add(Maps.MapBox.Instance);
             GMap.NET.MapProviders.GMapProviders.List.Add(Maps.MapboxNoFly.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.MapboxUser.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_Lake.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_1974.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_1979.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_1984.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_1988.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_Relief.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_Slopezone.Instance);
+            GMap.NET.MapProviders.GMapProviders.List.Add(Maps.Japan_Sea.Instance);
+
+            GoogleMapProvider.APIKey = "AIzaSyA5nFp39fEHruCezXnG3r8rGyZtuAkmCug";
+            if (Settings.Instance["GoogleApiKey"] != null) GoogleMapProvider.APIKey = Settings.Instance["GoogleApiKey"];
+            
+            Tracking.productName = Application.ProductName;
+            Tracking.productVersion = Application.ProductVersion;
+            Tracking.currentCultureName = Application.CurrentCulture.Name;
+            Tracking.primaryScreenBitsPerPixel = Screen.PrimaryScreen.BitsPerPixel;
+            Tracking.boundsWidth = Screen.PrimaryScreen.Bounds.Width;
+            Tracking.boundsHeight = Screen.PrimaryScreen.Bounds.Height;
+
+            Settings.Instance.UserAgent = Application.ProductName + " " + Application.ProductVersion + " (" + Environment.OSVersion.VersionString + ")";
+
             // optionally add gdal support
             if (Directory.Exists(Application.StartupPath + Path.DirectorySeparatorChar + "gdal"))
                 GMap.NET.MapProviders.GMapProviders.List.Add(GDAL.GDALProvider.Instance);
@@ -157,6 +294,10 @@ namespace MissionPlanner
             // add proxy settings
             GMap.NET.MapProviders.GMapProvider.WebProxy = WebRequest.GetSystemWebProxy();
             GMap.NET.MapProviders.GMapProvider.WebProxy.Credentials = CredentialCache.DefaultCredentials;
+
+            // generic status report screen
+            MAVLinkInterface.CreateIProgressReporterDialogue += title =>
+                new ProgressReporterDialogue() { StartPosition = FormStartPosition.CenterScreen, Text = title };
 
             WebRequest.DefaultWebProxy = WebRequest.GetSystemWebProxy();
             WebRequest.DefaultWebProxy.Credentials = CredentialCache.DefaultNetworkCredentials;
@@ -174,49 +315,43 @@ namespace MissionPlanner
 
             CleanupFiles();
 
-            log.InfoFormat("64bit os {0}, 64bit process {1}", System.Environment.Is64BitOperatingSystem,
-                System.Environment.Is64BitProcess);
+            log.InfoFormat("64bit os {0}, 64bit process {1}, OS Arch {2}", System.Environment.Is64BitOperatingSystem,
+                System.Environment.Is64BitProcess, RuntimeInformation.OSArchitecture);
 
-
-            Device.DeviceStructure test1 = new Device.DeviceStructure(73225);
-            Device.DeviceStructure test2 = new Device.DeviceStructure(262434);
-            Device.DeviceStructure test3 = new Device.DeviceStructure(131874);
-
-            //ph2
-            Device.DeviceStructure test5 = new Device.DeviceStructure(131874);
-            Device.DeviceStructure test6 = new Device.DeviceStructure(263178);
-            Device.DeviceStructure test7 = new Device.DeviceStructure(263178);
-            // 
-            Device.DeviceStructure test8 = new Device.DeviceStructure(1442082);
-            Device.DeviceStructure test9 = new Device.DeviceStructure(1114914);
-            Device.DeviceStructure test10 = new Device.DeviceStructure(1442826);
-            //
-            Device.DeviceStructure test11 = new Device.DeviceStructure(2359586);
-            Device.DeviceStructure test12 = new Device.DeviceStructure(2229282);
-            Device.DeviceStructure test13 = new Device.DeviceStructure(2360330);
-
-            MAVLink.MavlinkParse tmp = new MAVLink.MavlinkParse();
-            MAVLink.mavlink_heartbeat_t hb = new MAVLink.mavlink_heartbeat_t()
-            {
-                autopilot = 1,
-                base_mode = 2,
-                custom_mode = 3,
-                mavlink_version = 2,
-                system_status = 6,
-                type = 7
-            };
-            var t1 = tmp.GenerateMAVLinkPacket10(MAVLink.MAVLINK_MSG_ID.HEARTBEAT, hb);
-            var t2 = tmp.GenerateMAVLinkPacket20(MAVLink.MAVLINK_MSG_ID.HEARTBEAT, hb);
-            tmp.GenerateMAVLinkPacket10(MAVLink.MAVLINK_MSG_ID.HEARTBEAT, hb);
-            tmp.GenerateMAVLinkPacket20(MAVLink.MAVLINK_MSG_ID.HEARTBEAT, hb);
-
-            tmp.GenerateMAVLinkPacket20(MAVLink.MAVLINK_MSG_ID.HEARTBEAT, hb, true);
-            tmp.GenerateMAVLinkPacket20(MAVLink.MAVLINK_MSG_ID.HEARTBEAT, hb, true);
-
+            log.InfoFormat("Runtime Version {0}",
+                System.Reflection.Assembly.GetExecutingAssembly().ImageRuntimeVersion);
 
             try
             {
-                //System.Diagnostics.Process.GetCurrentProcess().PriorityClass = System.Diagnostics.ProcessPriorityClass.RealTime;
+                log.Debug(Process.GetCurrentProcess().Modules.ToJSON());
+            }
+            catch
+            {
+            }
+
+            Type type = Type.GetType("Mono.Runtime");
+            if (type != null)
+            {
+                MethodInfo displayName = type.GetMethod("GetDisplayName", BindingFlags.NonPublic | BindingFlags.Static);
+                if (displayName != null)
+                {
+                    log.Info(displayName.Invoke(null, null));
+                    //6.6.0.161 (tarball Tue Dec 10 10:36:32 UTC 2019)
+
+                    var match = Regex.Match(displayName.Invoke(null, null).ToString(), @"([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)");
+                    if(match.Success)
+                    {
+                        if (int.Parse(match.Groups[1].Value) < 6)
+                        {
+                            CustomMessageBox.Show(
+                                "Please upgrade your mono version to 6+ https://www.mono-project.com/download/stable/");
+                        }
+                    }
+                }
+            }
+
+            try
+            {
                 Thread.CurrentThread.Name = "Base Thread";
                 Application.Run(new MainV2());
             }
@@ -232,12 +367,70 @@ namespace MissionPlanner
             try
             {
                 // kill sim background process if its still running
-                if (Controls.SITL.simulator != null)
-                    Controls.SITL.simulator.Kill();
+                GCSViews.SITL.simulator.ForEach(a =>
+                {
+                    try
+                    {
+                        a.Kill();
+                    }
+                    catch { }
+                });
             }
             catch
             {
             }
+        }
+
+        private static string SerialPort_GetDeviceName(string port)
+        {
+            ObjectQuery query = new ObjectQuery("SELECT * FROM Win32_SerialPort");                // Win32_USBControllerDevice
+            using (ManagementObjectSearcher searcher = new ManagementObjectSearcher(query))
+            {
+                foreach (ManagementObject obj2 in searcher.Get())
+                {
+                    //DeviceID
+                    if (obj2.Properties["DeviceID"].Value.ToString().ToUpper() == port.ToUpper())
+                    {
+                        return obj2.Properties["Name"].Value.ToString();
+                    }
+                }
+            }
+
+            return "";
+        }
+
+        private static void LoadDlls()
+        {
+            var dlls = Directory.GetFiles(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "*.dll");
+
+            foreach (var dll in dlls)
+            {
+                try
+                {
+                    log.Debug("Load: " + dll);
+                    Assembly.LoadFile(dll);
+                }
+                catch (Exception ex)
+                {
+                    log.Debug(ex);
+                }
+            }
+        }
+
+        private static void CurrentDomain_FirstChanceException(object sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs e)
+        {
+            log.Debug("FirstChanceException in: " + e.Exception.Source, e.Exception);
+        }
+
+        private static Assembly CurrentDomain_TypeResolve(object sender, ResolveEventArgs args)
+        {
+            log.Debug("TypeResolve Failed: " + args.Name + " from " + args.RequestingAssembly);
+            return null;
+        }
+
+        private static void CurrentDomain_AssemblyLoad(object sender, AssemblyLoadEventArgs args)
+        {
+            log.Debug("Loaded: " + args.LoadedAssembly);
         }
 
         private static inputboxreturn CommsBaseOnInputBoxShow(string title, string prompttext, ref string text)
@@ -276,8 +469,36 @@ namespace MissionPlanner
             }
             catch
             {
-                
+
             }
+
+            try
+            {
+                var file = "px4uploader.exe";
+                var file1 = "px4uploader.dll";
+                if (File.Exists(file1) && File.Exists(file))
+                {
+                    File.Delete(file);
+                }
+            }
+            catch
+            {
+
+            }
+
+            try
+            {
+                var file = "libSkiaSharp.dll";
+                if (File.Exists(file))
+                {
+                    File.Delete(file);
+                }
+            }
+            catch
+            {
+
+            }
+
             try
             {
                 foreach (string newupdater in Directory.GetFiles(Settings.GetRunningDirectory(), "Updater.exe*.new"))
@@ -324,7 +545,11 @@ namespace MissionPlanner
 
         static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
-            handleException((Exception) e.ExceptionObject);
+            var list = AppDomain.CurrentDomain.ReflectionOnlyGetAssemblies();
+
+            log.Error(list);
+
+            handleException((Exception)e.ExceptionObject);
         }
 
         static string GetStackTrace(Exception e)
@@ -371,12 +596,18 @@ namespace MissionPlanner
             {
                 return;
             }
-            if (ex.Message == "The port is closed.")
+            if (ex.Message.Contains("The port is closed"))
             {
                 CustomMessageBox.Show("Serial connection has been lost");
                 return;
             }
-            if (ex.Message == "A device attached to the system is not functioning.")
+            if (ex.Message.Contains("Array.Empty"))
+            {
+                CustomMessageBox.Show("Please install Microsoft Dot Net 4.6.2");
+                Application.Exit();
+                return;
+            }
+            if (ex.Message.Contains("A device attached to the system is not functioning"))
             {
                 CustomMessageBox.Show("Serial connection has been lost");
                 return;
@@ -386,19 +617,19 @@ namespace MissionPlanner
                 CustomMessageBox.Show("Please update your graphics card drivers. Failed to create opengl surface\n" + ex.Message);
                 return;
             }
-            if (ex.GetType() == typeof (MissingMethodException) || ex.GetType() == typeof (TypeLoadException))
+            if (ex.GetType() == typeof(MissingMethodException) || ex.GetType() == typeof(TypeLoadException))
             {
                 CustomMessageBox.Show("Please Update - Some older library dlls are causing problems\n" + ex.Message);
                 return;
             }
-            if (ex.GetType() == typeof (ObjectDisposedException) || ex.GetType() == typeof (InvalidOperationException))
-                // something is trying to update while the form, is closing.
+            if (ex.GetType() == typeof(ObjectDisposedException) || ex.GetType() == typeof(InvalidOperationException))
+            // something is trying to update while the form, is closing.
             {
                 log.Error(ex);
                 return; // ignore
             }
-            if (ex.GetType() == typeof (FileNotFoundException) || ex.GetType() == typeof (BadImageFormatException))
-                // i get alot of error from people who click the exe from inside a zip file.
+            if (ex.GetType() == typeof(FileNotFoundException) || ex.GetType() == typeof(BadImageFormatException))
+            // i get alot of error from people who click the exe from inside a zip file.
             {
                 CustomMessageBox.Show(
                     "You are missing some DLL's. Please extract the zip file somewhere. OR Use the update feature from the menu " +
@@ -413,12 +644,12 @@ namespace MissionPlanner
                 return; // ignore
             }
 
-            log.Info("Th Name " + Thread.Name);
+            log.Info("Th Name " + Thread?.Name);
 
-            DialogResult dr =
+            var dr =
                 CustomMessageBox.Show("An error has occurred\n" + ex.ToString() + "\n\nReport this Error???",
                     "Send Error", MessageBoxButtons.YesNo);
-            if (DialogResult.Yes == dr)
+            if ((int)DialogResult.Yes == dr)
             {
                 try
                 {
@@ -437,7 +668,44 @@ namespace MissionPlanner
                     {
                     }
 
-                    // Create a request using a URL that can receive a post. 
+                    string processinfo = "";
+
+                    try
+                    {
+                        var result = new Dictionary<int, string[]>();
+
+                        var pid = Process.GetCurrentProcess().Id;
+
+                        using (var dataTarget = DataTarget.AttachToProcess(pid, 5000, AttachFlag.Passive))
+                        {
+                            ClrInfo runtimeInfo = dataTarget.ClrVersions[0];
+                            var runtime = runtimeInfo.CreateRuntime();
+
+                            foreach (var t in runtime.Threads)
+                            {
+                                result.Add(
+                                    t.ManagedThreadId,
+                                    t.StackTrace.Select(f =>
+                                    {
+                                        if (f.Method != null)
+                                        {
+                                            return f.Method.Type.Name + "." + f.Method.Name;
+                                        }
+
+                                        return null;
+                                    }).ToArray()
+                                );
+                            }
+                        }
+
+                        processinfo = result.ToJSON(Formatting.Indented); //;Process.GetCurrentProcess().Modules.ToJSON();
+                    }
+                    catch
+                    {
+                       
+                    }
+
+                    // Create a request using a URL that can receive a post.
                     WebRequest request = WebRequest.Create("http://vps.oborne.me/mail.php");
                     request.Timeout = 10000; // 10 sec
                     // Set the Method property of the request to POST.
@@ -450,7 +718,8 @@ namespace MissionPlanner
                                       + "\nStack: " + ex.StackTrace.ToString().Replace('&', ' ').Replace('=', ' ')
                                       + "\nTargetSite " + ex.TargetSite + " " + ex.TargetSite.DeclaringType
                                       + "\ndata " + data
-                                      + "\nmessage " + message.Replace('&', ' ').Replace('=', ' ');
+                                      + "\nmessage " + message.Replace('&', ' ').Replace('=', ' ')
+                                      + "\n\n" + processinfo;
                     byte[] byteArray = Encoding.ASCII.GetBytes(postData);
                     // Set the ContentType property of the WebRequest.
                     request.ContentType = "application/x-www-form-urlencoded";
@@ -466,7 +735,7 @@ namespace MissionPlanner
                     using (WebResponse response = request.GetResponse())
                     {
                         // Display the status.
-                        Console.WriteLine(((HttpWebResponse) response).StatusDescription);
+                        Console.WriteLine(((HttpWebResponse)response).StatusDescription);
                         // Get the stream containing content returned by the server.
                         using (Stream dataStream = response.GetResponseStream())
                         {
@@ -496,5 +765,10 @@ namespace MissionPlanner
 
             handleException(ex);
         }
+
+        //kill -QUIT pid
+        [DllImport("__Internal")]
+        public static extern void mono_threads_request_thread_dump();
+
     }
 }

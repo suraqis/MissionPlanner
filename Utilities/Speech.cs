@@ -1,16 +1,16 @@
+using log4net;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Runtime.InteropServices;
 using System.Speech.Synthesis;
 using System.Text.RegularExpressions;
-using log4net;
 
 namespace MissionPlanner.Utilities
 {
-    public class Speech: IDisposable
+    public class Speech : IDisposable, ISpeech
     {
         private static readonly ILog log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+
+        public bool speechEnable { get; set; } = false;
 
         SpeechSynthesizer _speechwindows;
         System.Diagnostics.Process _speechlinux;
@@ -19,9 +19,10 @@ namespace MissionPlanner.Utilities
 
         bool MONO = false;
 
-        public bool IsReady 
+        public bool IsReady
         {
-            get {
+            get
+            {
                 if (MONO)
                 {
                     return _state == SynthesizerState.Ready;
@@ -101,8 +102,15 @@ namespace MissionPlanner.Utilities
             }
             else
             {
-                if (_speechwindows != null)
-                    _speechwindows.SpeakAsync(text);
+                try
+                {
+                    if (_speechwindows != null)
+                        _speechwindows.SpeakAsync(text);
+                }
+                catch (COMException)
+                {
+
+                }
             }
 
             log.Info("TTS: say " + text);
@@ -130,7 +138,7 @@ namespace MissionPlanner.Utilities
             {
                 try
                 {
-                    if (_speechwindows!= null)
+                    if (_speechwindows != null)
                         _speechwindows.SpeakAsyncCancelAll();
                 }
                 catch (System.PlatformNotSupportedException)

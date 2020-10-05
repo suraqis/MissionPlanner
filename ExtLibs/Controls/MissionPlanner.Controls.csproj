@@ -1,196 +1,65 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
   <PropertyGroup>
-    <TargetFramework>net462</TargetFramework>
-    <ApplicationIcon />
-    <OutputTypeEx>library</OutputTypeEx>
-    <StartupObject />
-    <DebugType>embedded</DebugType>
-    <DebugSymbols>True</DebugSymbols>
-    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
-    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <OutputType>Library</OutputType>
+    <TargetFrameworks>net461;netstandard2.0</TargetFrameworks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo><GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
   </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <OutputPath>bin\Debug\net462\</OutputPath>
-  </PropertyGroup>
-
   <ItemGroup>
+    <PackageReference Include="log4net" Version="2.0.8" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="OpenTK.GLControl" Version="3.1.0" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
+    <PackageReference Include="SkiaSharp" Version="1.68.1.1" />
+    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="1.68.1.1" />
+    <PackageReference Include="System.Drawing.Primitives" Version="4.3.0" />
+
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MissionPlanner.Drawing.Common\MissionPlanner.Drawing.Common.csproj" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+    <ProjectReference Include="..\mono\mcs\class\System.Windows.Forms\System.Windows.Forms-net_4_x.csproj" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
     <ProjectReference Include="..\BSE.Windows.Forms\BSE.Windows.Forms.csproj" />
     <ProjectReference Include="..\GeoUtility\GeoUtility.csproj" />
-    <ProjectReference Include="..\GMap.NET.Core\GMap.NET.Core.csproj" />
     <ProjectReference Include="..\GMap.NET.WindowsForms\GMap.NET.WindowsForms.csproj" />
+    <ProjectReference Include="..\MissionPlanner.Drawing\MissionPlanner.Drawing.csproj" Condition="'$(TargetFramework)' != 'netstandard2.0'">
+      <Aliases>Drawing</Aliases>
+    </ProjectReference>
+    <ProjectReference Include="..\MissionPlanner.Drawing\MissionPlanner.Drawing.csproj" Condition="'$(TargetFramework)' == 'netstandard2.0'" />
+    <ProjectReference Include="..\SvgNet\SvgNet.csproj" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
     <ProjectReference Include="..\Utilities\MissionPlanner.Utilities.csproj" />
   </ItemGroup>
-
   <ItemGroup>
-    <Reference Include="OpenTK">
-      <HintPath>..\OpenTK.dll</HintPath>
-    </Reference>
-    <Reference Include="OpenTK.GLControl">
-      <HintPath>..\OpenTK.GLControl.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Windows.Forms" />
+    <Reference Include="OpenTK-1.0" Condition="'$(TargetFramework)' == 'netstandard2.0'">
+      <HintPath>..\OpenTK-1.0.dll</HintPath>
+    </Reference>    
   </ItemGroup>
-
   <ItemGroup>
-    <Compile Update="AGauge.cs">
-      <SubType>UserControl</SubType>
+    <Compile Remove="netstandard2.0\Shim.cs" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="HUDT.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>HUDT.resx</DependentUpon>
     </Compile>
-    <Compile Update="BackstageView\BackstageView.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="BackstageView\BackstageView.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="BackstageView\BackstageViewButton.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="BackstageView\BackStageViewMenuPanel.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="BackstageView\BackstageViewPage.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="Coords.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="Coords.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="FileBrowse.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="FileBrowse.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="FlashMessage.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="FlashMessage.designer.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="GradientBG.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="GradientBG.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="HorizontalProgressBar.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="HorizontalProgressBar2.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="HSI.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="HSI.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="HUD.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="ImageLabel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="ImageLabel.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="LabelWithPseudoOpacity.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="LineSeparator.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="MyButton.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="myGMAP.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="MyLabel.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="MyProgressBar.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="MyProgressBar.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="MyTrackBar.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="MyUserControl.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="OptionForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="OptionForm.Designer.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="PictureBoxMouseOver.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="PictureBoxWithPseudoOpacity.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="ProgressReporterDialogue.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="ProgressReporterDialogue.designer.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="ProgressReporterSphere.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="ProgressStep.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="ProgressStep.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="QuickView.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="QuickView.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="RadialGradientBG.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="RadialGradientBG.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="RangeControl.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="RangeControl.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="Sphere.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="ValuesControl.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="ValuesControl.Designer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="VerticalProgressBar.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="VerticalProgressBar2.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Update="WindDir.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Update="WindDir.Designer.cs">
-      <SubType>UserControl</SubType>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
   </ItemGroup>
-
-
+  <ItemGroup>
+    <EmbeddedResource Update="HUDT.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>HUDT.Designer.cs</LastGenOutput>
+      <CustomToolNamespace>MissionPlanner.Controls</CustomToolNamespace>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+      <CustomToolNamespace>MissionPlanner.Controls.Properties</CustomToolNamespace>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>
