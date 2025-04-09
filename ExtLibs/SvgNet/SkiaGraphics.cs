@@ -6,6 +6,7 @@ using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.Caching;
 using System.Runtime.InteropServices;
 using System.Text;
 using SkiaSharp;
@@ -39,13 +40,50 @@ namespace System
             return paint;
         }
 
+        static Dictionary<string, SKTypeface> fontcache = new Dictionary<string, SKTypeface>();
+
+        /// <summary>
+        /// from MP.Drawing.Extension.cs
+        /// </summary>
+        /// <param name="font"></param>
+        /// <returns></returns>
         public static SKPaint SKPaint(this Font font)
         {
+            var fm = SKFontManager.Default;
+            var id = "";
+            lock (fontcache)
+                if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh")
+                {
+                    id = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[CultureInfo.CurrentUICulture.TwoLetterISOLanguageName] =
+                            fm.MatchCharacter("YaHei", new[] {"zh"}, '飞');
+                }
+                else if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ja")
+                {
+                    id = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[CultureInfo.CurrentUICulture.TwoLetterISOLanguageName] =
+                            fm.MatchCharacter("", new[] {"ja"}, 'フ');
+                }
+                else if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "kr")
+                {
+                    id = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[CultureInfo.CurrentUICulture.TwoLetterISOLanguageName] =
+                            fm.MatchCharacter("", new[] {"kr"}, '비');
+                }
+                else
+                {
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[id] = SKTypeface.FromFamilyName(id);
+                }
+
             return new SKPaint
             {
-                Typeface = SKTypeface.FromFamilyName(font.SystemFontName),
-                TextSize = font.Size * 1.4f,
-                StrokeWidth = 2
+                Typeface = fontcache[id],
+                TextSize = font.SizeInPoints * 1.33334f,
+                StrokeWidth = 2,
             };
         }
 
@@ -126,7 +164,7 @@ namespace System
             {
                 using (var pic = g._rec.EndRecording())
                 using (var img = SKImage.FromPicture(pic,
-                    new SKSizeI((int)g._recsize.Width, (int)g._recsize.Height)))
+                    new SKSizeI((int) g._recsize.Width, (int) g._recsize.Height)))
                 {
                     if (img.IsLazyGenerated)
                     {
@@ -198,6 +236,8 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
             }
         }
 
+        public SKCanvas Image => _image;
+
 
         public void Dispose()
         {
@@ -224,7 +264,7 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
 
         public Matrix Transform
         {
-            get => new Matrix(_image.TotalMatrix.ScaleX,_image.TotalMatrix.SkewY, _image.TotalMatrix.SkewX, 
+            get => new Matrix(_image.TotalMatrix.ScaleX, _image.TotalMatrix.SkewY, _image.TotalMatrix.SkewX,
                 _image.TotalMatrix.ScaleY, _image.TotalMatrix.TransX, _image.TotalMatrix.TransY);
             set
             {
@@ -477,7 +517,8 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
 
         public void DrawImage(Image image, int x, int y, int width, int height)
         {
-            DrawImage(image, (float) x, y, width, height);
+            DrawImage(image, new Rectangle(x, y, width, height), new Rectangle(0, 0, image.Width, image.Height),
+                GraphicsUnit.Pixel);
         }
 
         public void DrawImage(Image image, PointF[] destPoints)
@@ -507,7 +548,8 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
 
         public void DrawImage(Image image, Rectangle destRect, Rectangle srcRect, GraphicsUnit srcUnit)
         {
-            throw new NotImplementedException();
+            _image.DrawBitmap(((Bitmap) image).ToSKBitmap(), srcRect.ToSKRect(), destRect.ToSKRect(),
+                new SKPaint() {FilterQuality = SKFilterQuality.Low, IsAntialias = true});
         }
 
         public void DrawImage(Image image, PointF[] destPoints, RectangleF srcRect, GraphicsUnit srcUnit)
@@ -541,6 +583,7 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
         public void DrawImage(Image img, Rectangle rectangle, float srcX, float srcY, float srcWidth, float srcHeight,
             GraphicsUnit graphicsUnit, ImageAttributes tileFlipXYAttributes)
         {
+            /*
             var coltype = SKColorType.Bgra8888;
             ((Bitmap) img).MakeTransparent(Color.Transparent);
             var data = ((Bitmap) img).LockBits(new Rectangle(0, 0, img.Width, img.Height),
@@ -562,27 +605,15 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
                 new SKRect(rectangle.X, rectangle.Y, rectangle.Right, rectangle.Bottom), _paint);
             ((Bitmap) img).UnlockBits(data);
             data = null;
+            */
 
-            return;
+            if (CompositingMode == CompositingMode.SourceOver)
+                _paint.BlendMode = SKBlendMode.SrcOver;
+            if (CompositingMode == CompositingMode.SourceCopy)
+                _paint.BlendMode = SKBlendMode.Src;
 
-            try
-            {
-                using (var skbmp =
-                    new SKBitmap(new SKImageInfo(img.Width, img.Height, coltype, SKAlphaType.Unpremul)))
-                {
-                    skbmp.SetPixels(data.Scan0);
-
-
-                    _image.DrawBitmap(skbmp, new SKRect(srcX, srcY, srcX + srcWidth, srcY + srcHeight),
-                        new SKRect(rectangle.X, rectangle.Y, rectangle.Right, rectangle.Bottom), _paint);
-                }
-            }
-            catch
-            {
-            }
-
-            ((Bitmap) img).UnlockBits(data);
-            data = null;
+            _image.DrawBitmap(((Bitmap) img).ToSKBitmap(), new SKRect(srcX, srcY, srcX + srcWidth, srcY + srcHeight),
+                new SKRect(rectangle.X, rectangle.Y, rectangle.Right, rectangle.Bottom), _paint);
         }
 
         public void DrawImage(Image image, Rectangle destRect, int srcX, int srcY, int srcWidth, int srcHeight,
@@ -1017,7 +1048,7 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
 
         public void FillPolygon(Brush brush, Point[] points)
         {
-           FillPolygon(brush, points, FillMode.Alternate);
+            FillPolygon(brush, points, FillMode.Alternate);
         }
 
         public void FillPolygon(Brush brush, Point[] points, FillMode fillMode)
@@ -1211,8 +1242,7 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
 
         public void ResetClip()
         {
-            _image.ClipRect(_image.LocalClipBounds);
-            //_image.ClipRect(SKRect.Create(0, 0, 10000, 10000), SKClipOperation.Intersect, false);
+            _image.ClipRect(SKRect.Create(0, 0, 10000, 10000), (SKClipOperation) 5); // kReplace_Op
         }
 
         public void ResetTransform()
@@ -1270,7 +1300,8 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
 
         public void SetClip(Rectangle rect)
         {
-            throw new NotImplementedException();
+            ResetClip();
+            _image.ClipRect(new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom));
         }
 
         public void SetClip(Rectangle rect, CombineMode combineMode)
@@ -1694,6 +1725,86 @@ GRBackendRenderTargetDesc backendRenderTargetDescription = new GRBackendRenderTa
             public string Value { get; set; }
 
             public float Width { get; set; }
+        }
+    }
+
+    public static class ExtensionsSVG
+    {
+        public static SKRect ToSKRect(this Rectangle rect)
+        {
+            return new SKRect(rect.Left, rect.Top, rect.Right, rect.Bottom);
+        }
+
+        static MemoryCache SKBitmapcache = new MemoryCache("ToSKBitmap");
+
+        public static SKBitmap ToSKBitmap(this Bitmap bitmap)
+        {
+            if (SKBitmapcache.Contains(bitmap.GetHashCode().ToString()))
+            {
+                var ans = SKBitmapcache.Get(bitmap.GetHashCode().ToString());
+
+                return (SKBitmap) ans;
+            }
+
+            SKImageInfo info = new SKImageInfo(bitmap.Width, bitmap.Height);
+            SKBitmap sKBitmap = new SKBitmap(info);
+            using (SKPixmap pixmap = sKBitmap.PeekPixels())
+            {
+                bitmap.ToSKPixmap(pixmap);
+
+                SKBitmapcache.Add(bitmap.GetHashCode().ToString(), sKBitmap,
+                    new CacheItemPolicy() { SlidingExpiration = TimeSpan.FromSeconds(10) });
+
+                return sKBitmap;
+            }
+        }
+
+        public static SKImage ToSKImage(this Bitmap bitmap)
+        {
+            SKImageInfo info = new SKImageInfo(bitmap.Width, bitmap.Height);
+            SKImage sKImage = SKImage.Create(info);
+            using (SKPixmap pixmap = sKImage.PeekPixels())
+            {
+                bitmap.ToSKPixmap(pixmap);
+                return sKImage;
+            }
+        }
+
+        public static Bitmap ToBitmap(this SKImage skiaImage)
+        {
+            Bitmap bitmap = new Bitmap(skiaImage.Width, skiaImage.Height, PixelFormat.Format32bppPArgb);
+            BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
+            using (SKPixmap pixmap = new SKPixmap(new SKImageInfo(bitmapData.Width, bitmapData.Height), bitmapData.Scan0, bitmapData.Stride))
+            {
+                skiaImage.ReadPixels(pixmap, 0, 0);
+            }
+            bitmap.UnlockBits(bitmapData);
+            return bitmap;
+        }
+
+
+
+        public static void ToSKPixmap(this Bitmap bitmap, SKPixmap pixmap)
+        {
+            if (pixmap.ColorType == SKImageInfo.PlatformColorType)
+            {
+                SKImageInfo info = pixmap.Info;
+                using (Bitmap image = new Bitmap(info.Width, info.Height, info.RowBytes, PixelFormat.Format32bppPArgb, pixmap.GetPixels()))
+                {
+                    using (Graphics graphics = Graphics.FromImage(image))
+                    {
+                        graphics.Clear(Color.Transparent);
+                        graphics.DrawImageUnscaled(bitmap, 0, 0);
+                    }
+                }
+            }
+            else
+            {
+                using (SKImage sKImage = bitmap.ToSKImage())
+                {
+                    sKImage.ReadPixels(pixmap, 0, 0);
+                }
+            }
         }
     }
 }

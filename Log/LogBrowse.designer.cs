@@ -35,6 +35,7 @@ namespace MissionPlanner.Log
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(LogBrowse));
             this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.exportVisibleToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.exportFilesToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.BUT_Graphit = new MissionPlanner.Controls.MyButton();
             this.BUT_cleargraph = new MissionPlanner.Controls.MyButton();
             this.BUT_loadlog = new MissionPlanner.Controls.MyButton();
@@ -47,6 +48,7 @@ namespace MissionPlanner.Log
             this.label1 = new System.Windows.Forms.Label();
             this.myGMAP1 = new MissionPlanner.Controls.myGMAP();
             this.splitContainerButGrid = new System.Windows.Forms.SplitContainer();
+            this.chk_params = new System.Windows.Forms.CheckBox();
             this.chk_events = new System.Windows.Forms.CheckBox();
             this.chk_datagrid = new System.Windows.Forms.CheckBox();
             this.chk_msg = new System.Windows.Forms.CheckBox();
@@ -60,6 +62,7 @@ namespace MissionPlanner.Log
             this.dataGridView1 = new MissionPlanner.Controls.MyDataGridView();
             this.treeView1 = new System.Windows.Forms.TreeView();
             this.splitContainerAllTree = new System.Windows.Forms.SplitContainer();
+            this.txt_info = new System.Windows.Forms.TextBox();
             this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
             this.contextMenuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainerZgGrid)).BeginInit();
@@ -84,7 +87,8 @@ namespace MissionPlanner.Log
             // contextMenuStrip1
             // 
             this.contextMenuStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.exportVisibleToolStripMenuItem});
+            this.exportVisibleToolStripMenuItem,
+            this.exportFilesToolStripMenuItem});
             this.contextMenuStrip1.Name = "contextMenuStrip1";
             resources.ApplyResources(this.contextMenuStrip1, "contextMenuStrip1");
             // 
@@ -93,6 +97,12 @@ namespace MissionPlanner.Log
             this.exportVisibleToolStripMenuItem.Name = "exportVisibleToolStripMenuItem";
             resources.ApplyResources(this.exportVisibleToolStripMenuItem, "exportVisibleToolStripMenuItem");
             this.exportVisibleToolStripMenuItem.Click += new System.EventHandler(this.exportVisibleToolStripMenuItem_Click);
+            // 
+            // exportFilesToolStripMenuItem
+            // 
+            this.exportFilesToolStripMenuItem.Name = "exportFilesToolStripMenuItem";
+            resources.ApplyResources(this.exportFilesToolStripMenuItem, "exportFilesToolStripMenuItem");
+            this.exportFilesToolStripMenuItem.Click += new System.EventHandler(this.exportFilesToolStripMenuItem_Click);
             // 
             // BUT_Graphit
             // 
@@ -147,7 +157,6 @@ namespace MissionPlanner.Log
             this.splitContainerZgMap.Panel2.Controls.Add(this.label2);
             this.splitContainerZgMap.Panel2.Controls.Add(this.label1);
             this.splitContainerZgMap.Panel2.Controls.Add(this.myGMAP1);
-            this.splitContainerZgMap.Panel2Collapsed = true;
             this.splitContainerZgMap.Resize += new System.EventHandler(this.splitContainer2_Resize);
             // 
             // zg1
@@ -205,7 +214,7 @@ namespace MissionPlanner.Log
             this.myGMAP1.HoldInvalidation = false;
             this.myGMAP1.LevelsKeepInMemmory = 5;
             this.myGMAP1.MarkersEnabled = true;
-            this.myGMAP1.MaxZoom = 21;
+            this.myGMAP1.MaxZoom = 24;
             this.myGMAP1.MinZoom = 2;
             this.myGMAP1.MouseWheelZoomType = GMap.NET.MouseWheelZoomType.MousePositionWithoutCenter;
             this.myGMAP1.Name = "myGMAP1";
@@ -230,6 +239,7 @@ namespace MissionPlanner.Log
             // 
             // splitContainerButGrid.Panel1
             // 
+            this.splitContainerButGrid.Panel1.Controls.Add(this.chk_params);
             this.splitContainerButGrid.Panel1.Controls.Add(this.chk_events);
             this.splitContainerButGrid.Panel1.Controls.Add(this.chk_datagrid);
             this.splitContainerButGrid.Panel1.Controls.Add(this.BUT_Graphit);
@@ -247,7 +257,13 @@ namespace MissionPlanner.Log
             // splitContainerButGrid.Panel2
             // 
             this.splitContainerButGrid.Panel2.Controls.Add(this.dataGridView1);
-            this.splitContainerButGrid.Panel2Collapsed = true;
+            // 
+            // chk_params
+            // 
+            resources.ApplyResources(this.chk_params, "chk_params");
+            this.chk_params.Name = "chk_params";
+            this.chk_params.UseVisualStyleBackColor = true;
+            this.chk_params.CheckedChanged += new System.EventHandler(this.chk_params_CheckedChanged);
             // 
             // chk_events
             // 
@@ -354,10 +370,11 @@ namespace MissionPlanner.Log
             this.treeView1.Nodes.AddRange(new System.Windows.Forms.TreeNode[] {
             ((System.Windows.Forms.TreeNode)(resources.GetObject("treeView1.Nodes"))),
             ((System.Windows.Forms.TreeNode)(resources.GetObject("treeView1.Nodes1")))});
+            this.treeView1.AfterCheck += new System.Windows.Forms.TreeViewEventHandler(this.treeView1_AfterCheck);
             this.treeView1.DrawNode += new System.Windows.Forms.DrawTreeNodeEventHandler(this.treeView1_DrawNode);
-            this.treeView1.NodeMouseClick += new System.Windows.Forms.TreeNodeMouseClickEventHandler(this.treeView1_NodeMouseClick);
+            this.treeView1.NodeMouseHover += new System.Windows.Forms.TreeNodeMouseHoverEventHandler(this.treeView1_TreeNodeMouseHover);
             this.treeView1.DoubleClick += new System.EventHandler(this.treeView1_DoubleClick);
-            this.treeView1.NodeMouseHover += new TreeNodeMouseHoverEventHandler(this.treeView1_TreeNodeMouseHover);
+            this.treeView1.MouseDown += new System.Windows.Forms.MouseEventHandler(this.treeView1_MouseDown);
             // 
             // splitContainerAllTree
             // 
@@ -371,6 +388,12 @@ namespace MissionPlanner.Log
             // splitContainerAllTree.Panel2
             // 
             this.splitContainerAllTree.Panel2.Controls.Add(this.treeView1);
+            this.splitContainerAllTree.Panel2.Controls.Add(this.txt_info);
+            // 
+            // txt_info
+            // 
+            resources.ApplyResources(this.txt_info, "txt_info");
+            this.txt_info.Name = "txt_info";
             // 
             // LogBrowse
             // 
@@ -398,6 +421,7 @@ namespace MissionPlanner.Log
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).EndInit();
             this.splitContainerAllTree.Panel1.ResumeLayout(false);
             this.splitContainerAllTree.Panel2.ResumeLayout(false);
+            this.splitContainerAllTree.Panel2.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainerAllTree)).EndInit();
             this.splitContainerAllTree.ResumeLayout(false);
             this.ResumeLayout(false);
@@ -434,6 +458,9 @@ namespace MissionPlanner.Log
         private System.Windows.Forms.CheckBox chk_datagrid;
         private System.Windows.Forms.CheckBox chk_events;
         private System.Windows.Forms.ToolTip toolTip1;
+        private TextBox txt_info;
+        private CheckBox chk_params;
+        private ToolStripMenuItem exportFilesToolStripMenuItem;
     }
 }
 

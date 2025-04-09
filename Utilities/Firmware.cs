@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
@@ -201,13 +202,12 @@ namespace MissionPlanner.Utilities
                     XmlSerializer xms = new XmlSerializer(typeof(optionsObject), new Type[] { typeof(software) });
 
                     log.Info("url: " + url);
-                    WebRequest request = WebRequest.Create(url);
-                    if (!String.IsNullOrEmpty(Settings.Instance.UserAgent))
-                        ((HttpWebRequest)request).UserAgent = Settings.Instance.UserAgent;
-                    request.Timeout = 10000;
+                    var client = new HttpClient();
+                    client.DefaultRequestHeaders.Add("User-Agent", Settings.Instance.UserAgent);
+                    client.Timeout = TimeSpan.FromSeconds(30);
 
-                    using (WebResponse response = request.GetResponse())
-                    using (XmlReader xmlreader = XmlReader.Create(response.GetResponseStream()))
+                    using (var response = client.GetAsync(url))
+                    using (XmlReader xmlreader = XmlReader.Create(response.Result.Content.ReadAsStreamAsync().Result))
                     {
                         options = (optionsObject)xms.Deserialize(xmlreader);
                     }
@@ -244,42 +244,7 @@ namespace MissionPlanner.Utilities
 
             return options.softwares;
         }
-
-        public static void SaveSoftwares(optionsObject list)
-        {
-            System.Xml.Serialization.XmlSerializer writer =
-                new System.Xml.Serialization.XmlSerializer(typeof(optionsObject), new Type[] { typeof(software) });
-
-            using (
-                StreamWriter sw =
-                    new StreamWriter(Settings.GetUserDataDirectory() + "fwversions.xml"))
-            {
-                writer.Serialize(sw, list);
-            }
-        }
-
-        public static List<software> LoadSoftwares()
-        {
-            try
-            {
-                System.Xml.Serialization.XmlSerializer reader =
-                    new System.Xml.Serialization.XmlSerializer(typeof(optionsObject), new Type[] { typeof(software) });
-
-                using (
-                    StreamReader sr =
-                        new StreamReader(Settings.GetUserDataDirectory() + "fwversions.xml"))
-                {
-                    return ((optionsObject)reader.Deserialize(sr)).softwares;
-                }
-            }
-            catch (Exception ex)
-            {
-                log.Error(ex);
-            }
-
-            return new List<software>();
-        }
-
+      
         void updateProgress(int percent, string status)
         {
             if (Progress != null)
@@ -338,7 +303,7 @@ namespace MissionPlanner.Utilities
             }
         }
 
-        private string GetAPMVERSIONFile(Uri url)
+        public string GetAPMVERSIONFile(Uri url)
         {
             lock (urlcachelock)
                 if (!urlcacheSem.ContainsKey(url.AbsoluteUri))
@@ -355,12 +320,12 @@ namespace MissionPlanner.Utilities
                         return urlcache[url.AbsoluteUri];
                     }
 
-                WebRequest wr = WebRequest.Create(url);
-                if (!String.IsNullOrEmpty(Settings.Instance.UserAgent))
-                    ((HttpWebRequest)wr).UserAgent = Settings.Instance.UserAgent;
-                wr.Timeout = 10000;
-                using (WebResponse wresp = wr.GetResponse())
-                using (StreamReader sr = new StreamReader(wresp.GetResponseStream()))
+                var client = new HttpClient();
+                client.DefaultRequestHeaders.Add("User-Agent", Settings.Instance.UserAgent);
+                client.Timeout = TimeSpan.FromSeconds(30);
+
+                using (var response = client.GetAsync(url))
+                using (StreamReader sr = new StreamReader(response.GetAwaiter().GetResult().Content.ReadAsStreamAsync().GetAwaiter().GetResult()))
                 {
                     while (!sr.EndOfStream)
                     {
@@ -393,7 +358,7 @@ namespace MissionPlanner.Utilities
         /// <param name="temp"></param>
         /// <param name="historyhash"></param>
         /// <param name="relType"></param>
-        public bool update(string comport, software temp, string historyhash, List<DeviceInfo> ports)
+        public bool updateLegacy(string comport, software temp, string historyhash, List<DeviceInfo> ports)
         {
             BoardDetect.boards board = BoardDetect.boards.none;
             string baseurl = "";
@@ -565,61 +530,9 @@ namespace MissionPlanner.Utilities
 
                 var starttime = DateTime.Now;
 
-                // Create a request using a URL that can receive a post. 
-                WebRequest request = WebRequest.Create(baseurl);
-                if (!String.IsNullOrEmpty(Settings.Instance.UserAgent))
-                    ((HttpWebRequest)request).UserAgent = Settings.Instance.UserAgent;
-                request.Timeout = 10000;
-                // Set the Method property of the request to POST.
-                request.Method = "GET";
-                // Get the request stream.
-                Stream dataStream; //= request.GetRequestStream();
-                // Get the response (using statement is exception safe)
-                using (WebResponse response = request.GetResponse())
-                {
-                    // Display the status.
-                    log.Info(((HttpWebResponse)response).StatusDescription);
-                    // Get the stream containing content returned by the server.
-                    using (dataStream = response.GetResponseStream())
-                    {
-                        long bytes = response.ContentLength;
-                        long contlen = bytes;
-
-                        byte[] buf1 = new byte[1024];
-
-                        using (FileStream fs = new FileStream(
-                                Settings.GetUserDataDirectory() +
-                                @"firmware.hex", FileMode.Create))
-                        {
-                            updateProgress(0, Strings.DownloadingFromInternet);
-
-                            long length = response.ContentLength;
-                            long progress = 0;
-                            dataStream.ReadTimeout = 30000;
-
-                            while (dataStream.CanRead)
-                            {
-                                try
-                                {
-                                    updateProgress(length == 0 ? 50 : (int)((progress * 100) / length), Strings.DownloadingFromInternet);
-                                }
-                                catch
-                                {
-                                }
-                                int len = dataStream.Read(buf1, 0, 1024);
-                                if (len == 0)
-                                    break;
-                                progress += len;
-                                bytes -= len;
-                                fs.Write(buf1, 0, len);
-                            }
-
-                            fs.Close();
-                        }
-                        dataStream.Close();
-                    }
-                    response.Close();
-                }
+                Download.getFilefromNet(baseurl, Settings.GetUserDataDirectory() +
+                                                 @"firmware.hex",
+                    (i, s) => updateProgress(i, s));
 
                 var timetook = (DateTime.Now - starttime).TotalMilliseconds;
 
@@ -723,17 +636,38 @@ namespace MissionPlanner.Utilities
 
                     try
                     {
+                        if (state.ShouldExitCurrentIteration)
+                        {
+                            up.close();
+                            return;
+                        }
+
                         log.Info(DateTime.Now.Millisecond + " Trying identify " + port);
                         up.identify();
 
+                        if (state.ShouldExitCurrentIteration)
+                        {
+                            up.close();
+                            return;
+                        }
+
                         updateProgress(-1, port + " Identify");
                         log.InfoFormat(
-                            "Found board type {0} brdrev {1} blrev {2} fwmax {3} chip {5:X} chipdes {6} on {4}",
+                            "Found board type {0} brdrev {1} blrev {2} fwmax {3} chip {5:X} chipdes {6} on {4} extmax {7}",
                             up.board_type,
-                            up.board_rev, up.bl_rev, up.fw_maxsize, port, up.chip, up.chip_desc);
+                            up.board_rev, up.bl_rev, up.fw_maxsize, port, up.chip, up.chip_desc, up.extf_maxsize);
+
+                        // if the apj is not for the detected board type - keep looking
+                        if (up.board_type != fw.board_id)
+                        {
+                            log.InfoFormat("Board type mismatch - keep looking, detected {0}, fw file {1}", up.board_type, fw.board_id);
+                            up.close();
+                            return;
+                        }
 
                         up.ProgressEvent += new Uploader.ProgressEventHandler(up_ProgressEvent);
                         up.LogEvent += new Uploader.LogEventHandler(up_LogEvent);
+                        up.identify();
                         state.Break();
                         foundboard = true;
                         uploader = up;
@@ -747,6 +681,7 @@ namespace MissionPlanner.Utilities
                 });
 
                 log.Info(DateTime.Now.Millisecond + " Portscan done found:" + foundboard);
+                Application.DoEvents();
 
                 if (foundboard)
                 {
@@ -763,6 +698,14 @@ namespace MissionPlanner.Utilities
                     {
                         log.Error(ex);
                         CustomMessageBox.Show("lost communication with the board.", "lost comms");
+                        uploader.close();
+                        result = false;
+                        return false;
+                    }
+                    catch (TimeoutException ex)
+                    {
+                        log.Error(ex);
+                        CustomMessageBox.Show("lost communication with the board.", "comms timeout");
                         uploader.close();
                         result = false;
                         return false;
@@ -838,7 +781,7 @@ namespace MissionPlanner.Utilities
             {
                 try
                 {
-                    if (task.Wait(TimeSpan.FromSeconds(3)) && task.Result == true)
+                    if (task.Wait(TimeSpan.FromSeconds(3)) && task.GetAwaiter().GetResult() == true)
                         return;
                     else
                     {

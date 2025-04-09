@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <ProjectGuid>{563D7C2E-14E2-47EC-95E4-4EA0BBA75C18}</ProjectGuid>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net472</TargetFramework>
     <AssemblyTitle>Xamarin.Forms for Windows Forms</AssemblyTitle>
     <Product>Xamarin.Forms.Platform.WinForms</Product>
     <Copyright>Copyright (c) Yasuhiro Taniuchi</Copyright>
@@ -27,8 +27,6 @@
     <Compile Update="PlatformRenderer.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="OpenTK" Version="3.1.0" />
-    <PackageReference Include="OpenTK.GLControl" Version="3.1.0" />
-    <PackageReference Include="Xamarin.Forms" Version="4.5.0.530" />
+    <PackageReference Include="Xamarin.Forms" Version="5.0.0.2012" />
   </ItemGroup>
 </Project>

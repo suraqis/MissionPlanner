@@ -1,7 +1,17 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net472</TargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <WarningsAsErrors>$(WarningsAsErrors)</WarningsAsErrors>
+	  <NoWarn>1701;1702;NU1605</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <WarningsAsErrors>$(WarningsAsErrors)</WarningsAsErrors>
+	  <NoWarn>1701;1702;NU1605</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

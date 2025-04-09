@@ -29,7 +29,7 @@ namespace MissionPlanner.Utilities
 
                     string[] items = line.Split(new char[] {' ', ',', '\t'}, StringSplitOptions.RemoveEmptyEntries);
 
-                    if (items.Length != 2)
+                    if (items.Length < 2)
                         continue;
 
                     string name = items[0];
@@ -59,6 +59,14 @@ namespace MissionPlanner.Utilities
                     if (name == "GND_ABS_PRESS")
                         continue;
                     if (name == "GND_TEMP")
+                        continue;
+                    if (name == "BARO1_GND_PRESS")
+                        continue;
+                    if (name == "BARO2_GND_PRESS")
+                        continue;
+                    if (name == "BARO3_GND_PRESS")
+                        continue;
+                    if (name == "BARO_GND_TEMP")
                         continue;
                     if (name == "CMD_INDEX")
                         continue;

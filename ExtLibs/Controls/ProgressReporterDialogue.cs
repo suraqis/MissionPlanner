@@ -206,9 +206,10 @@ namespace MissionPlanner.Controls
                     this.progressBar1.Value = 100;
                     this.btnCancel.Visible = false;
                     this.btnClose.Visible = false;
+                    this.ControlBox = true;
                 });
 
-            Thread.Sleep(100);
+            Thread.Sleep(100);         
 
             this.BeginInvoke((MethodInvoker)this.Close);
         }
@@ -222,7 +223,7 @@ namespace MissionPlanner.Controls
         // - Change the Cancel button to 'Close', so that the user can look at the exception message a bit
         private void ShowDoneWithError(Exception exception, string doWorkArgs)
         {
-            var errMessage = doWorkArgs ?? "There was an unexpected error";
+            var errMessage = doWorkArgs ?? "There was an unexpected error (" + exception.Message + ")";
 
             if (this.Disposing || this.IsDisposed)
                 return;
@@ -300,7 +301,8 @@ namespace MissionPlanner.Controls
                           + Environment.NewLine + Environment.NewLine
                           + this.workerException.StackTrace;
 
-            MsgBox.CustomMessageBox.Show(message,"Exception Details",MessageBoxButtons.OK,MessageBoxIcon.Information);
+            MsgBox.CustomMessageBox.ShowTextBox(message, "Exception Details", MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
 
         /// <summary>
@@ -350,6 +352,10 @@ namespace MissionPlanner.Controls
             this.Focus();
         }
 
+        void IProgressReporterDialogue.BeginInvoke(Delegate method)
+        {
+            this.BeginInvoke(method);
+        }
     }
 
 }

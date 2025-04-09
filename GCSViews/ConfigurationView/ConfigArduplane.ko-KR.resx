@@ -117,181 +117,106 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="label12.Text" xml:space="preserve">
-    <value>상승 최대치 (m/s)</value>
-  </data>
-  <data name="label49.Text" xml:space="preserve">
-    <value>INT_MAX</value>
-  </data>
-  <data name="label10.Text" xml:space="preserve">
-    <value>주기</value>
-  </data>
-  <data name="label13.Text" xml:space="preserve">
-    <value>Pitch 완충</value>
-  </data>
-  <data name="label11.Text" xml:space="preserve">
-    <value>최소 하강(m/s)</value>
-  </data>
-  <data name="label14.Text" xml:space="preserve">
-    <value>시간 상수</value>
-  </data>
-  <data name="label15.Text" xml:space="preserve">
-    <value>최대 하강(m/s)</value>
-  </data>
-  <data name="label83.Text" xml:space="preserve">
-    <value>P to T</value>
-  </data>
-  <data name="label56.Text" xml:space="preserve">
-    <value>P</value>
-  </data>
-  <data name="label2.Text" xml:space="preserve">
-    <value>최대 FBW</value>
-  </data>
-  <data name="label54.Text" xml:space="preserve">
-    <value>D</value>
-  </data>
-  <data name="label3.Text" xml:space="preserve">
-    <value>최소 FBW</value>
-  </data>
-  <data name="groupBox8.Text" xml:space="preserve">
-    <value>Servo Roll Pid</value>
-  </data>
-  <data name="label57.Text" xml:space="preserve">
-    <value>최대 integrator</value>
-  </data>
-  <data name="groupBox9.Text" xml:space="preserve">
-    <value>Servo Pitch Pid</value>
-  </data>
-  <data name="label52.Text" xml:space="preserve">
-    <value>P</value>
-  </data>
-  <data name="label1.Text" xml:space="preserve">
-    <value>비율</value>
+  <data name="label5.Text" xml:space="preserve">
+    <value>경사율</value>
   </data>
   <data name="label6.Text" xml:space="preserve">
     <value>최대</value>
   </data>
-  <data name="label55.Text" xml:space="preserve">
-    <value>I</value>
-  </data>
-  <data name="label50.Text" xml:space="preserve">
-    <value>D</value>
-  </data>
   <data name="label7.Text" xml:space="preserve">
     <value>최소</value>
-  </data>
-  <data name="groupBox4.Text" xml:space="preserve">
-    <value>L1 제어 - 회전 제어</value>
-  </data>
-  <data name="label4.Text" xml:space="preserve">
-    <value>순항</value>
-  </data>
-  <data name="label53.Text" xml:space="preserve">
-    <value>INT_MAX</value>
-  </data>
-  <data name="groupBox5.Text" xml:space="preserve">
-    <value>TECS</value>
-  </data>
-  <data name="label5.Text" xml:space="preserve">
-    <value>SlewRate</value>
-  </data>
-  <data name="groupBox2.Text" xml:space="preserve">
-    <value>항공 각도</value>
-  </data>
-  <data name="label51.Text" xml:space="preserve">
-    <value>I</value>
-  </data>
-  <data name="groupBox3.Text" xml:space="preserve">
-    <value>조절판 0-100%</value>
   </data>
   <data name="label8.Text" xml:space="preserve">
     <value>순항</value>
   </data>
-  <data name="groupBox1.Text" xml:space="preserve">
-    <value>비행속도 m/s</value>
+  <data name="groupBox3.Text" xml:space="preserve">
+    <value>추진력 0-100%</value>
   </data>
-  <data name="label9.Text" xml:space="preserve">
-    <value>제동</value>
+  <data name="label1.Text" xml:space="preserve">
+    <value>비율</value>
+  </data>
+  <data name="label2.Text" xml:space="preserve">
+    <value>최대 FBW</value>
+  </data>
+  <data name="label3.Text" xml:space="preserve">
+    <value>최소 FBW</value>
+  </data>
+  <data name="label4.Text" xml:space="preserve">
+    <value>순항</value>
+  </data>
+  <data name="groupBox1.Text" xml:space="preserve">
+    <value>항속 m/s</value>
+  </data>
+  <data name="label39.Text" xml:space="preserve">
+    <value>최소 상하 요동각</value>
+  </data>
+  <data name="label38.Text" xml:space="preserve">
+    <value>최대 상하 요동각</value>
+  </data>
+  <data name="label37.Text" xml:space="preserve">
+    <value>최대 Bank값</value>
+  </data>
+  <data name="groupBox2.Text" xml:space="preserve">
+    <value>순항각</value>
+  </data>
+  <data name="label78.Text" xml:space="preserve">
+    <value>방향타 혼합</value>
+  </data>
+  <data name="groupBox16.Text" xml:space="preserve">
+    <value>기타 혼합</value>
+  </data>
+  <data name="groupBox14.Text" xml:space="preserve">
+    <value>에너지/고도 PID</value>
+  </data>
+  <data name="label57.Text" xml:space="preserve">
+    <value>적분 최대</value>
   </data>
   <data name="label58.Text" xml:space="preserve">
-    <value>완충</value>
-  </data>
-  <data name="label65.Text" xml:space="preserve">
-    <value>INT_MAX</value>
+    <value>약화</value>
   </data>
   <data name="label59.Text" xml:space="preserve">
     <value>적분</value>
   </data>
-  <data name="label66.Text" xml:space="preserve">
-    <value>D</value>
-  </data>
-  <data name="label67.Text" xml:space="preserve">
-    <value>I</value>
-  </data>
-  <data name="label60.Text" xml:space="preserve">
-    <value>Yaw 2 roll</value>
-  </data>
-  <data name="groupBox16.Text" xml:space="preserve">
-    <value>Other Mix's</value>
-  </data>
-  <data name="groupBox14.Text" xml:space="preserve">
-    <value>에너지/고도 Pid</value>
-  </data>
-  <data name="groupBox12.Text" xml:space="preserve">
-    <value>Nav Pitch AS Pid</value>
-  </data>
-  <data name="label68.Text" xml:space="preserve">
-    <value>P</value>
-  </data>
-  <data name="label69.Text" xml:space="preserve">
-    <value>INT_MAX</value>
-  </data>
   <data name="groupBox10.Text" xml:space="preserve">
-    <value>Servo Yaw</value>
+    <value>서보 방위각</value>
   </data>
-  <data name="groupBox13.Text" xml:space="preserve">
-    <value>Nav Pitch Alt Pid</value>
+  <data name="groupBox9.Text" xml:space="preserve">
+    <value>서보 상하 요동 PID</value>
   </data>
-  <data name="label38.Text" xml:space="preserve">
-    <value>최대 Pitch</value>
-  </data>
-  <data name="label37.Text" xml:space="preserve">
-    <value>최대 조향</value>
-  </data>
-  <data name="label39.Text" xml:space="preserve">
-    <value>최소 Pitch</value>
-  </data>
-  <data name="label74.Text" xml:space="preserve">
-    <value>D</value>
-  </data>
-  <data name="label76.Text" xml:space="preserve">
-    <value>P</value>
-  </data>
-  <data name="label75.Text" xml:space="preserve">
-    <value>I</value>
-  </data>
-  <data name="label70.Text" xml:space="preserve">
-    <value>D</value>
-  </data>
-  <data name="label72.Text" xml:space="preserve">
-    <value>P</value>
-  </data>
-  <data name="label71.Text" xml:space="preserve">
-    <value>I</value>
-  </data>
-  <data name="label73.Text" xml:space="preserve">
-    <value>INT_MAX</value>
+  <data name="groupBox8.Text" xml:space="preserve">
+    <value>서보 좌우 요동 PID</value>
   </data>
   <data name="BUT_writePIDS.Text" xml:space="preserve">
-    <value>매개 변수 쓰기</value>
-  </data>
-  <data name="label78.Text" xml:space="preserve">
-    <value>Rudder Mix</value>
-  </data>
-  <data name="BUT_refreshpart.Text" xml:space="preserve">
-    <value>화면 새로 고침</value>
+    <value>매개변수 기록</value>
   </data>
   <data name="BUT_rerequestparams.Text" xml:space="preserve">
-    <value>매개 변수 새로 고침</value>
+    <value>매개변수 갱신</value>
+  </data>
+  <data name="label9.Text" xml:space="preserve">
+    <value>댐핑</value>
+  </data>
+  <data name="label10.Text" xml:space="preserve">
+    <value>주기</value>
+  </data>
+  <data name="groupBox4.Text" xml:space="preserve">
+    <value>L1 제어 - 선회 제어</value>
+  </data>
+  <data name="label15.Text" xml:space="preserve">
+    <value>최대 하강속도 (m/s)</value>
+  </data>
+  <data name="label14.Text" xml:space="preserve">
+    <value>시간 상수</value>
+  </data>
+  <data name="label13.Text" xml:space="preserve">
+    <value>Pitch 약화</value>
+  </data>
+  <data name="label11.Text" xml:space="preserve">
+    <value>최소 하강속도 (m/s)</value>
+  </data>
+  <data name="label12.Text" xml:space="preserve">
+    <value>최대 상승속도 (m/s)</value>
+  </data>
+  <data name="BUT_refreshpart.Text" xml:space="preserve">
+    <value>화면 갱신</value>
   </data>
 </root>

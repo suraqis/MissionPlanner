@@ -32,10 +32,13 @@ namespace System.Drawing
         {
             Width = width;
             Color = Color.FromArgb(color.Alpha, color.Red, color.Green, color.Blue);
-            Brush = new SolidBrush(Color);
-
+            
             try
             {
+                var loader = SKTypeface.Default;
+
+                Brush = new SolidBrush(Color);
+
                 nativePen = new SKPaint()
                 {
                     Color = color,
@@ -48,7 +51,7 @@ namespace System.Drawing
             }
             catch (Exception e)
             {
-                //Console.WriteLine(e);
+                Console.WriteLine(e);
             }
         }
 
@@ -76,6 +79,8 @@ namespace System.Drawing
         public int MiterLimit { get; set; }
 
         public LineCap EndCap { get; set; }
+        public CustomLineCap CustomStartCap { get; set; }
+        public CustomLineCap CustomEndCap { get; set; }
 
         public object Clone()
         {

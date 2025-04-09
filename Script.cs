@@ -1,5 +1,6 @@
 ﻿using IronPython.Hosting;
 using Microsoft.Scripting.Hosting;
+using MissionPlanner.GCSViews;
 using MissionPlanner.Utilities;
 using System;
 using System.Collections.Generic;
@@ -42,6 +43,9 @@ namespace MissionPlanner
             {
                 engine.Runtime.LoadAssembly(ass);
             }
+            scope.SetVariable("MainV2", MainV2.instance);
+            scope.SetVariable("FlightPlanner", FlightPlanner.instance);
+            scope.SetVariable("FlightData", FlightData.instance);
             scope.SetVariable("Ports", MainV2.Comports);
             scope.SetVariable("MAV", MainV2.comPort);
             scope.SetVariable("cs", MainV2.comPort.MAV.cs);
@@ -49,16 +53,16 @@ namespace MissionPlanner
             scope.SetVariable("mavutil", this);
             scope.SetVariable("Joystick", MainV2.joystick);
 
-            engine.CreateScriptSourceFromString("print 'hello world from python'").Execute(scope);
-            engine.CreateScriptSourceFromString("print cs.roll").Execute(scope);
+            engine.CreateScriptSourceFromString("print('hello world from python')").Execute(scope);
+            engine.CreateScriptSourceFromString("print(cs.roll)").Execute(scope);
 
             if (redirectOutput)
             {
                 //Redirect output through this writer
                 //this writer will not actually write to the memorystreams
                 OutputWriter = new Utilities.StringRedirectWriter();
-                engine.Runtime.IO.SetErrorOutput(new MemoryStream(), OutputWriter);
-                engine.Runtime.IO.SetOutput(new MemoryStream(), OutputWriter);
+                engine.Runtime.IO.SetErrorOutput(new StringRedirectStream(OutputWriter), OutputWriter);
+                engine.Runtime.IO.SetOutput(new StringRedirectStream(OutputWriter), OutputWriter);
             }
             else
                 OutputWriter = null;

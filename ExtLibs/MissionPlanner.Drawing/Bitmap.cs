@@ -16,32 +16,46 @@ namespace System.Drawing
     [Serializable]
     public class Bitmap : Image, ISerializable, ICloneable, IDisposable
     {
-        private object p;
-        private Size size;
+        private ColorPalette _palette = null;
 
         public Bitmap(int width, int height, int stride, SKColorType bgra8888 = (SKColorType.Bgra8888),
-            IntPtr data = default(IntPtr))
+                    IntPtr data = default(IntPtr))
         {
-            nativeSkBitmap = new SKBitmap(new SKImageInfo(width, height, bgra8888));
-            nativeSkBitmap.SetPixels(data);
+            nativeSkBitmap = new SKBitmap();
+            nativeSkBitmap.InstallPixels(new SKImageInfo(width, height, bgra8888), data);
         }
 
         public Bitmap(int width, int height, int stride, PixelFormat bgra8888 = Imaging.PixelFormat.Format32bppArgb,
             IntPtr data = default(IntPtr))
         {
-            nativeSkBitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888));
-            nativeSkBitmap.SetPixels(data);
+            nativeSkBitmap = new SKBitmap();
+            nativeSkBitmap.InstallPixels(new SKImageInfo(width, height, SKColorType.Bgra8888), data);
         }
 
         public Bitmap(int width, int height, SKColorType colorType = (SKColorType.Bgra8888))
         {
+            if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+            if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
             nativeSkBitmap = new SKBitmap(new SKImageInfo(width, height, colorType));
             nativeSkBitmap.Erase(SKColor.Empty);
         }
 
         public Bitmap(Stream stream)
         {
-            nativeSkBitmap = SKBitmap.Decode(stream);
+            if (stream is null)
+            {
+                throw new ArgumentNullException(nameof(stream));
+            }
+            try
+            {
+                var skimage = SKImage.FromEncodedData(stream);
+                nativeSkBitmap = SKBitmap.FromImage(skimage); //SKBitmap.Decode(stream);
+            }
+            catch (Exception ex)
+            {
+                nativeSkBitmap = new SKBitmap(new SKImageInfo(1, 1));
+                Console.WriteLine(ex);
+            }
         }
 
         public static implicit operator Bitmap(byte[] data)
@@ -49,7 +63,7 @@ namespace System.Drawing
             return new Bitmap(new MemoryStream(data));
         }
 
-        protected Bitmap(SerializationInfo info, StreamingContext context): base (info, context)
+        protected Bitmap(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }
 
@@ -64,6 +78,10 @@ namespace System.Drawing
 
         public Bitmap(int clientSizeWidth, int clientSizeHeight, Graphics realDc)
         {
+            if (clientSizeHeight < 1)
+                clientSizeHeight = 1;
+            if (clientSizeWidth < 1)
+                clientSizeWidth = 1;
             nativeSkBitmap = new SKBitmap(new SKImageInfo(clientSizeWidth, clientSizeHeight, SKColorType.Bgra8888));
             nativeSkBitmap.Erase(SKColor.Empty);
             //nativeSkBitmap.SetPixels(realDc._surface.);
@@ -71,33 +89,47 @@ namespace System.Drawing
 
         public Bitmap(string filename)
         {
+            if (filename is null)
+            {
+                throw new ArgumentNullException(nameof(filename));
+            }
+
             using (var f = File.OpenRead(filename))
                 nativeSkBitmap = SKBitmap.Decode(f);
         }
 
         public Bitmap(Image image)
         {
+            if (image is null)
+            {
+                throw new ArgumentNullException(nameof(image));
+            }
+
             nativeSkBitmap = image.nativeSkBitmap.Copy();
         }
 
-        public static Bitmap FromFile(string filename)
+        public new static Bitmap FromFile(string filename)
         {
             using (var ms = File.OpenRead(filename))
                 return FromStream(ms);
         }
 
-        public static Bitmap FromStream(Stream ms)
+        public new static Bitmap FromStream(Stream ms)
         {
+            if (ms is null)
+            {
+                throw new ArgumentNullException(nameof(ms));
+            }
+
             MemoryStream ms2 = new MemoryStream();
             ms.CopyTo(ms2);
             ms2.Position = 0;
             var skimage = SKImage.FromEncodedData(ms2);
             if (skimage == null)
                 return null;
-            var ans = new Bitmap() {nativeSkBitmap = SKBitmap.FromImage(skimage)};
+            var ans = new Bitmap() { nativeSkBitmap = SKBitmap.FromImage(skimage) };
             return ans;
         }
-
         public Bitmap(byte[] largeIconsImage, Size clientSizeHeight)
         {
             nativeSkBitmap = SKBitmap.Decode(SKData.CreateCopy(largeIconsImage)).Resize(
@@ -137,31 +169,20 @@ namespace System.Drawing
         {
         }
 
-        public PixelFormat PixelFormat
-        {
-            get
-            {
-                switch (nativeSkBitmap.ColorType)
-                {
-                    case SKColorType.Bgra8888:
-                        return PixelFormat.Format32bppArgb;
-                    case SKColorType.Rgb888x:
-                        return PixelFormat.Format32bppRgb;
-                    case SKColorType.Argb4444:
-                        return PixelFormat.Format16bppArgb1555;
-                    case SKColorType.Rgb565:
-                        return PixelFormat.Format16bppRgb565;
-                    default:
-                        return PixelFormat.Format32bppArgb;
-                }
-            }
-
-            set { }
-        }
-
-        public ColorPalette Palette { get; set; } = new ColorPalette(256);
+        public ColorPalette Palette { get { if (_palette == null) _palette = new ColorPalette(256); return _palette; } set => _palette = value; }
 
         public BitmapData LockBits(Rectangle rectangle, object writeOnly, SKColorType imgPixelFormat)
+        {
+            return new BitmapData()
+            {
+                Scan0 = nativeSkBitmap.GetPixels(),
+                Stride = nativeSkBitmap.RowBytes,
+                Width = nativeSkBitmap.Width,
+                Height = nativeSkBitmap.Height
+            };
+        }
+
+        public BitmapData LockBits(int x, int y, int w, int h, object writeOnly, SKColorType imgPixelFormat)
         {
             return new BitmapData()
             {
@@ -203,17 +224,12 @@ namespace System.Drawing
         {
             SKBitmap ans = new SKBitmap(v1, v2, SKColorType.Bgra8888, SKAlphaType.Premul);
             nativeSkBitmap.ScalePixels(ans, SKFilterQuality.Medium);
-            return new Bitmap() {nativeSkBitmap = ans, PixelFormat = PixelFormat.Format32bppArgb};
+            return new Bitmap() { nativeSkBitmap = ans, PixelFormat = PixelFormat.Format32bppArgb };
         }
 
         public BitmapData LockBits(Rectangle rectangle, ImageLockMode readWrite, PixelFormat format32BppArgb)
         {
             return LockBits(rectangle, readWrite, SKColorType.Rgba8888);
-        }
-
-        public void RotateFlip(RotateFlipType rotateNoneFlipX)
-        {
-            //
         }
 
         public object GetHicon()

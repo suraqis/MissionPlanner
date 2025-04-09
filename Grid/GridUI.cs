@@ -20,8 +20,10 @@ using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
 using System.Xml;
+using com.drew.metadata.jpeg;
 using GeoAPI.CoordinateSystems;
 using GeoAPI.CoordinateSystems.Transformations;
+using MissionPlanner.Controls;
 
 namespace MissionPlanner.Grid
 {
@@ -178,6 +180,9 @@ namespace MissionPlanner.Grid
 
             var griddata = savegriddata();
 
+            // Save config too
+            savesettings();
+
             using (SaveFileDialog sfd = new SaveFileDialog())
             {
                 sfd.Filter = "*.grid|*.grid";
@@ -212,6 +217,7 @@ namespace MissionPlanner.Grid
             NUM_overshoot.Value = griddata.overshoot1;
             NUM_overshoot2.Value = griddata.overshoot2;
             NUM_leadin.Value = griddata.leadin;
+            NUM_leadin2.Value = griddata.leadin2;
             CMB_startfrom.Text = griddata.startfrom;
             num_overlap.Value = griddata.overlap;
             num_sidelap.Value = griddata.sidelap;
@@ -240,6 +246,11 @@ namespace MissionPlanner.Grid
 
             // Plane Settings
             NUM_Lane_Dist.Value = griddata.minlaneseparation;
+
+            // Spiral Settings
+            NUM_clockwise_laps.Value = griddata.clockwiseLaps;
+            NUM_laps.Value = griddata.laps;
+            CHK_match_spiral_perimeter.Checked = griddata.matchPerimeter;
 
             // update display options last
             CHK_internals.Checked = griddata.internals;
@@ -273,6 +284,7 @@ namespace MissionPlanner.Grid
             griddata.overshoot1 = NUM_overshoot.Value;
             griddata.overshoot2 = NUM_overshoot2.Value;
             griddata.leadin = NUM_leadin.Value;
+            griddata.leadin2 = NUM_leadin2.Value;
             griddata.startfrom = CMB_startfrom.Text;
             griddata.overlap = num_overlap.Value;
             griddata.sidelap = num_sidelap.Value;
@@ -288,6 +300,11 @@ namespace MissionPlanner.Grid
 
             // Plane Settings
             griddata.minlaneseparation = NUM_Lane_Dist.Value;
+
+            //Spiral Settings
+            griddata.clockwiseLaps = NUM_clockwise_laps.Value;
+            griddata.laps = NUM_laps.Value;
+            griddata.matchPerimeter = CHK_match_spiral_perimeter.Checked;
 
             griddata.trigdist = rad_trigdist.Checked;
             griddata.digicam = rad_digicam.Checked;
@@ -320,7 +337,8 @@ namespace MissionPlanner.Grid
                 loadsetting("grid_dist", NUM_Distance);
                 loadsetting("grid_overshoot1", NUM_overshoot);
                 loadsetting("grid_overshoot2", NUM_overshoot2);
-                loadsetting("grid_leadin", NUM_leadin);
+                loadsetting("grid_leadin1", NUM_leadin);
+                loadsetting("grid_leadin2", NUM_leadin2);
                 loadsetting("grid_startfrom", CMB_startfrom);
                 loadsetting("grid_overlap", num_overlap);
                 loadsetting("grid_sidelap", num_sidelap);
@@ -348,6 +366,11 @@ namespace MissionPlanner.Grid
 
                 // Plane Settings
                 loadsetting("grid_min_lane_separation", NUM_Lane_Dist);
+
+                // Spiral Settings
+                loadsetting("grid_clockwise_laps", NUM_clockwise_laps);
+                loadsetting("grid_laps", NUM_laps);
+                loadsetting("grid_match_spiral_perimeter", CHK_match_spiral_perimeter);
 
                 loadsetting("grid_internals", CHK_internals);
                 loadsetting("grid_footprints", CHK_footprints);
@@ -391,11 +414,13 @@ namespace MissionPlanner.Grid
             plugin.Host.config["grid_camdir"] = CHK_camdirection.Checked.ToString();
 
             plugin.Host.config["grid_usespeed"] = CHK_usespeed.Checked.ToString();
+            plugin.Host.config["grid_speed"] = NUM_UpDownFlySpeed.Value.ToString();
 
             plugin.Host.config["grid_dist"] = NUM_Distance.Value.ToString();
             plugin.Host.config["grid_overshoot1"] = NUM_overshoot.Value.ToString();
             plugin.Host.config["grid_overshoot2"] = NUM_overshoot2.Value.ToString();
-            plugin.Host.config["grid_leadin"] = NUM_leadin.Value.ToString();
+            plugin.Host.config["grid_leadin1"] = NUM_leadin.Value.ToString();
+            plugin.Host.config["grid_leadin2"] = NUM_leadin2.Value.ToString();
             plugin.Host.config["grid_overlap"] = num_overlap.Value.ToString();
             plugin.Host.config["grid_sidelap"] = num_sidelap.Value.ToString();
             plugin.Host.config["grid_spacing"] = NUM_spacing.Value.ToString();
@@ -423,6 +448,11 @@ namespace MissionPlanner.Grid
 
             // Plane Settings
             plugin.Host.config["grid_min_lane_separation"] = NUM_Lane_Dist.Value.ToString();
+
+            // Spiral Settings
+            plugin.Host.config["grid_clockwise_laps"] = NUM_clockwise_laps.Value.ToString();
+            plugin.Host.config["grid_laps"] = NUM_laps.Value.ToString();
+            plugin.Host.config["grid_match_spiral_perimeter"] = CHK_match_spiral_perimeter.Checked.ToString();
         }
 
         private void xmlcamera(bool write, string filename)
@@ -571,15 +601,18 @@ namespace MissionPlanner.Grid
                     (double)NUM_Distance.Value, (double)NUM_spacing.Value, (double)NUM_angle.Value,
                     (double)NUM_overshoot.Value, (double)NUM_overshoot2.Value,
                     (Utilities.Grid.StartPosition)Enum.Parse(typeof(Utilities.Grid.StartPosition), CMB_startfrom.Text), false,
-                    (float)NUM_Lane_Dist.Value, (float)NUM_leadin.Value, MainV2.comPort.MAV.cs.PlannedHomeLocation).ConfigureAwait(true);
+                    (float)NUM_Lane_Dist.Value, (float)NUM_leadin.Value, MainV2.comPort.MAV.cs.PlannedHomeLocation,
+                    (int)NUM_clockwise_laps.Value, CHK_match_spiral_perimeter.Checked, (int)NUM_laps.Value).ConfigureAwait(true);
             }
             else
             {
-                grid = await Utilities.Grid.CreateGridAsync(list, CurrentState.fromDistDisplayUnit((double)NUM_altitude.Value),
-                    (double)NUM_Distance.Value, (double)NUM_spacing.Value, (double)NUM_angle.Value,
-                    (double)NUM_overshoot.Value, (double)NUM_overshoot2.Value,
-                    (Utilities.Grid.StartPosition)Enum.Parse(typeof(Utilities.Grid.StartPosition), CMB_startfrom.Text), false,
-                    (float)NUM_Lane_Dist.Value, (float)NUM_leadin.Value, MainV2.comPort.MAV.cs.PlannedHomeLocation).ConfigureAwait(true);
+                grid = await Utilities.Grid.CreateGridAsync(list,
+                    CurrentState.fromDistDisplayUnit((double) NUM_altitude.Value),
+                    (double) NUM_Distance.Value, (double) NUM_spacing.Value, (double) NUM_angle.Value,
+                    (double) NUM_overshoot.Value, (double) NUM_overshoot2.Value,
+                    (Utilities.Grid.StartPosition) Enum.Parse(typeof(Utilities.Grid.StartPosition), CMB_startfrom.Text),
+                    false, (float) NUM_Lane_Dist.Value, (float) NUM_leadin.Value, (float) NUM_leadin2.Value,
+                    MainV2.comPort.MAV.cs.PlannedHomeLocation, chk_optimize_for_distance.Checked).ConfigureAwait(true);
             }
 
             map.HoldInvalidation = true;
@@ -601,11 +634,13 @@ namespace MissionPlanner.Grid
                 // add crossover
                 Utilities.Grid.StartPointLatLngAlt = grid[grid.Count - 1];
 
-                grid.AddRange(await Utilities.Grid.CreateGridAsync(list, CurrentState.fromDistDisplayUnit((double)NUM_altitude.Value),
-                    (double)NUM_Distance.Value, (double)NUM_spacing.Value, (double)NUM_angle.Value + 90.0,
-                    (double)NUM_overshoot.Value, (double)NUM_overshoot2.Value,
+                grid.AddRange(await Utilities.Grid.CreateGridAsync(list,
+                    CurrentState.fromDistDisplayUnit((double) NUM_altitude.Value),
+                    (double) NUM_Distance.Value, (double) NUM_spacing.Value, (double) NUM_angle.Value + 90.0,
+                    (double) NUM_overshoot.Value, (double) NUM_overshoot2.Value,
                     Utilities.Grid.StartPosition.Point, false,
-                    (float)NUM_Lane_Dist.Value, (float)NUM_leadin.Value, MainV2.comPort.MAV.cs.PlannedHomeLocation).ConfigureAwait(true));
+                    (float) NUM_Lane_Dist.Value, (float) NUM_leadin.Value, (float) NUM_leadin2.Value,
+                    MainV2.comPort.MAV.cs.PlannedHomeLocation, chk_optimize_for_distance.Checked).ConfigureAwait(true));
             }
 
             if (CHK_boundary.Checked)
@@ -628,7 +663,7 @@ namespace MissionPlanner.Grid
             List<PointLatLng> segment = new List<PointLatLng>();
             double maxgroundelevation = double.MinValue;
             double mingroundelevation = double.MaxValue;
-            double startalt = plugin.Host.cs.HomeAlt;
+            double startalt = plugin.Host.cs.PlannedHomeLocation.Alt;
 
             foreach (var item in grid)
             {
@@ -753,7 +788,7 @@ namespace MissionPlanner.Grid
 
             // turn radrad = tas^2 / (tan(angle) * G)
             float v_sq = (float)(((float)NUM_UpDownFlySpeed.Value / CurrentState.multiplierspeed) * ((float)NUM_UpDownFlySpeed.Value / CurrentState.multiplierspeed));
-            float turnrad = (float)(v_sq / (float)(9.808f * Math.Tan(35 * deg2rad)));
+            float turnrad = (float)(v_sq / (float)(9.808f * Math.Tan(45 * deg2rad)));
 
             // Update Stats 
             if (DistUnits == "Feet")
@@ -902,15 +937,29 @@ namespace MissionPlanner.Grid
 
             list.ForEach(x => { list2.Add(x); });
 
-            var poly = new GMapPolygon(list2, "poly");
-            poly.Stroke = new Pen(Color.Red, 2);
-            poly.Fill = Brushes.Transparent;
+            if (chk_Corridor.Checked)
+            {
+                var poly = new GMapRoute(list2, "route");
+                poly.Stroke = new Pen(Color.Red, 2);
 
-            routesOverlay.Polygons.Add(poly);
+                routesOverlay.Routes.Add(poly);
+            }
+            else
+            {
+                var poly = new GMapPolygon(list2, "poly");
+                poly.Stroke = new Pen(Color.Red, 2);
+                poly.Fill = Brushes.Transparent;
 
+                routesOverlay.Polygons.Add(poly);
+            }
+
+
+            int a = 1;
             foreach (var item in list)
             {
-                routesOverlay.Markers.Add(new GMarkerGoogle(item, GMarkerGoogleType.red));
+                routesOverlay.Markers.Add(new GMarkerGoogle(item, GMarkerGoogleType.red)
+                    {ToolTipText = a.ToString(), ToolTipMode = MarkerTooltipMode.OnMouseOver});
+                a++;
             }
         }
 
@@ -1460,14 +1509,24 @@ namespace MissionPlanner.Grid
                             Console.WriteLine(lcDirectory.GetName() + " - " + tag.GetTagName() + " " + tag.GetTagValue().ToString());
                         }
 
-                        if (lcDirectory.ContainsTag(ExifDirectory.TAG_EXIF_IMAGE_HEIGHT))
+                        if (lcDirectory is ExifDirectory && lcDirectory.ContainsTag(ExifDirectory.TAG_EXIF_IMAGE_HEIGHT))
                         {
                             TXT_imgheight.Text = lcDirectory.GetInt(ExifDirectory.TAG_EXIF_IMAGE_HEIGHT).ToString();
                         }
 
-                        if (lcDirectory.ContainsTag(ExifDirectory.TAG_EXIF_IMAGE_WIDTH))
+                        if (lcDirectory is ExifDirectory && lcDirectory.ContainsTag(ExifDirectory.TAG_EXIF_IMAGE_WIDTH))
                         {
                             TXT_imgwidth.Text = lcDirectory.GetInt(ExifDirectory.TAG_EXIF_IMAGE_WIDTH).ToString();
+                        }
+
+                        if (lcDirectory is JpegDirectory && lcDirectory.ContainsTag(JpegDirectory.TAG_JPEG_IMAGE_HEIGHT))
+                        {
+                            TXT_imgheight.Text = lcDirectory.GetInt(JpegDirectory.TAG_JPEG_IMAGE_HEIGHT).ToString();
+                        }
+
+                        if (lcDirectory is JpegDirectory && lcDirectory.ContainsTag(JpegDirectory.TAG_JPEG_IMAGE_WIDTH))
+                        {
+                            TXT_imgwidth.Text = lcDirectory.GetInt(JpegDirectory.TAG_JPEG_IMAGE_WIDTH).ToString();
                         }
 
                         if (lcDirectory.ContainsTag(ExifDirectory.TAG_FOCAL_PLANE_X_RES))
@@ -1596,7 +1655,7 @@ namespace MissionPlanner.Grid
                     if (CHK_usespeed.Checked)
                     {
                         plugin.Host.AddWPtoList(MAVLink.MAV_CMD.DO_CHANGE_SPEED, 0,
-                            (int)((float)NUM_UpDownFlySpeed.Value / CurrentState.multiplierspeed), 0, 0, 0, 0, 0,
+                            ((float)NUM_UpDownFlySpeed.Value / CurrentState.multiplierspeed), 0, 0, 0, 0, 0,
                             gridobject);
                     }
 
@@ -1853,5 +1912,21 @@ namespace MissionPlanner.Grid
             domainUpDown1_ValueChanged(sender, e);
         }
 
+        private void CMB_startfrom_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if(loading)
+                return;
+
+            if (CMB_startfrom.Text == Utilities.Grid.StartPosition.Point.ToString())
+            {
+                int pnt = 1;
+                InputBox.Show("Enter point #", "Please enter a boundary point number", ref pnt);
+
+                if(list.Count > pnt)
+                    Utilities.Grid.StartPointLatLngAlt = list[pnt - 1];
+            }
+
+            domainUpDown1_ValueChanged(sender, e);
+        }
     }
 }

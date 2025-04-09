@@ -10,19 +10,69 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using GMap.NET.MapProviders;
+using MissionPlanner.Utilities;
 
 namespace GDAL
 {
-    public static class GDAL
+    public class GDAL: IGDAL
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         static List<GeoBitmap> _cache = new List<GeoBitmap>();
 
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        static extern bool SetDllDirectory(string lpPathName);
+
         static GDAL()
         {
             log.InfoFormat("GDAL static ctor");
-            GdalConfiguration.ConfigureGdal();
+            try
+            {
+                string executingAssemblyFile = new Uri(Assembly.GetExecutingAssembly().GetName().CodeBase).LocalPath;
+                string executingDirectory = Path.GetDirectoryName(executingAssemblyFile);
+                string gdalPath = Path.Combine(executingDirectory, "gdal");
+                string nativePath = "";
+                if (Environment.Is64BitProcess)
+                    nativePath = Path.Combine(gdalPath, "x64");
+                else
+                    nativePath = Path.Combine(gdalPath, "x86");
+                
+                SetDllDirectory(nativePath);
+            }
+            catch(Exception ex)
+            {
+                log.Error(ex);
+            }
+
+            try
+            {
+                GdalConfiguration.ConfigureGdal();
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex);
+            }
+
+            try
+            {
+                GdalConfiguration.ConfigureOgr();
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex);
+            }
+
+            try
+            {
+                log.InfoFormat("GDAL static ctor - SpatialReference");
+                WGS84srs = new SpatialReference(null);
+                WGS84srs.ImportFromEPSG(4326);
+            }
+            catch (Exception ex)
+            {
+                log.Error(ex);
+            }
         }
 
         public delegate void Progress(double percent, string message);
@@ -61,6 +111,11 @@ namespace GDAL
 
             // lowest res first
             _cache.Sort((a, b) => { return b.Resolution.CompareTo(a.Resolution); });
+        }
+
+        public GMapProvider GetProvider()
+        {
+            return GDALProvider.Instance;
         }
 
         public static GeoBitmap LoadImageInfo(string file)
@@ -128,10 +183,11 @@ namespace GDAL
                 log.InfoFormat("  Center (" + GDALInfoGetPosition(ds, ds.RasterXSize / 2, ds.RasterYSize / 2) + ")");
                 log.InfoFormat("");
 
+                SpatialReference srs = null;
                 string projection = ds.GetProjectionRef();
                 if (projection != null)
                 {
-                    SpatialReference srs = new SpatialReference(null);
+                    srs = new SpatialReference(null);
                     if (srs.ImportFromWkt(ref projection) == 0)
                     {
                         string wkt;
@@ -165,7 +221,7 @@ namespace GDAL
                     for (int i = 0; i < 6; i++)
                         log.InfoFormat("t[" + i + "] = " + transform[i].ToString());
                     log.InfoFormat("");
-                }
+                }               
 
                 var TL = GDALInfoGetPositionDouble(ds, 0.0, 0.0);
                 var BR = GDALInfoGetPositionDouble(ds, ds.RasterXSize, ds.RasterYSize);
@@ -174,11 +230,29 @@ namespace GDAL
                 if (resolution == 1)
                     throw new Exception("Invalid coords");
 
+                if (srs != null && projection != null)
+                {
+                    if (srs.IsGeographic() != 1)
+                    {
+                        var wkt = "LINESTRING EMPTY";
+                        var points = Ogr.CreateGeometryFromWkt(ref wkt, srs);
+                        points.AddPoint(TL[0], TL[1], 0);
+                        points.AddPoint(BR[0], BR[1], 0);
+                        //points.AssignSpatialReference(srs);
+                        points.TransformTo(WGS84srs);
+
+                        points.GetPoint(0, TL);
+                        points.GetPoint(1, BR);
+                    }
+                }
+
                 return new GeoBitmap(file, resolution, ds.RasterXSize, ds.RasterYSize, TL[0], TL[1], BR[0], BR[1]);
             }
         }
 
         static object locker = new object();
+
+        public static SpatialReference WGS84srs { get; }
 
         public static Bitmap GetBitmap(double lng1, double lat1, double lng2, double lat2, long width, long height)
         {
@@ -195,11 +269,11 @@ namespace GDAL
 
                 RectLatLng request = new RectLatLng(lat1, lng1, lng2 - lng1, lat2 - lat1);
 
-                //g.DrawString(request.ToString(), Control.DefaultFont, Brushes.Wheat, 0, 0);
+                //g.DrawString(request.ToString(), new Font("Arial", 12), Brushes.Wheat, 0, 0);
 
                 bool cleared = false;
 
-                foreach (var image in _cache)
+                foreach (var image in _cache.ToArray())
                 {
                     // calc the pixel coord within the image rect
                     var ImageTop = (float)map(request.Top, image.Rect.Top, image.Rect.Bottom, 0, image.RasterYSize);
@@ -217,7 +291,7 @@ namespace GDAL
                     {
                         if (!cleared)
                         {
-                            //g.Clear(Color.Red);
+                            //g.FillRectangle(Brushes.Green, rect.X, rect.Y, rect.Width, rect.Height);
                             cleared = true;
                         }
 
@@ -323,6 +397,14 @@ namespace GDAL
 
                     {
                         Bitmap bitmap = new Bitmap(ds.RasterXSize, ds.RasterYSize, PixelFormat.Format32bppArgb);
+                        if (ds.RasterCount == 3)
+                        {
+                            // when we load a 24bit bitmap, we need to set the alpha channel else we get nothing
+                            using (var tmp=Graphics.FromImage(bitmap))
+                            {
+                                tmp.Clear(Color.White);
+                            }
+                        }
 
                         for (int a = 1; a <= ds.RasterCount; a++)
                         {
@@ -383,7 +465,7 @@ namespace GDAL
                             }
                         }
 
-                        //bitmap.Save("gdal.bmp", ImageFormat.Bmp);
+                        //bitmap.Save("gdal.png", ImageFormat.Png);
                         return bitmap;
                     }
                 }
@@ -524,6 +606,11 @@ namespace GDAL
             }
             Console.WriteLine("");
             return 1;
+        }
+
+        void IGDAL.ScanDirectory(string s)
+        {
+            ScanDirectory(s);
         }
     }
 }

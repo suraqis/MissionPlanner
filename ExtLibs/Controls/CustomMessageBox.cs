@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using MissionPlanner.Controls;
 using System.Threading;
+using TextBox = System.Windows.Forms.TextBox;
 
 namespace MissionPlanner.MsgBox
 {
@@ -69,7 +70,7 @@ namespace MissionPlanner.MsgBox
             return answer;
         }
 
-        static DialogResult ShowUI(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, string YesText = "Yes", string NoText = "No")
+        static DialogResult ShowUI(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, string YesText = "Yes", string NoText = "No", bool label = true)
         {
             DialogResult answer = DialogResult.Abort;
 
@@ -94,9 +95,11 @@ namespace MissionPlanner.MsgBox
 
             // ensure we are always in a known state
             _state = DialogResult.None;
-
+            
+            SizeF sz = TextRenderer.MeasureText ("The quick brown Fox", SystemFonts.DefaultFont);
+            var perchar = sz.Width / 20;
             // convert to nice wrapped lines.
-            text = AddNewLinesToText(text);
+            text = AddNewLinesToText(text, Screen.PrimaryScreen.Bounds.Width / (int)perchar);
             // get pixel width and height
             Size textSize = TextRenderer.MeasureText(text, SystemFonts.DefaultFont);
             // allow for icon
@@ -121,15 +124,35 @@ namespace MissionPlanner.MsgBox
                 Rectangle screenRectangle = msgBoxFrm.RectangleToScreen(msgBoxFrm.ClientRectangle);
                 int titleHeight = screenRectangle.Top - msgBoxFrm.Top;
 
-                var lblMessage = new Label
+                Control lblMessage = null;
+
+                if (label)
                 {
-                    Left = 58,
-                    Top = 15,
-                    Width = textSize.Width + 10,
-                    Height = textSize.Height + 10,
-                    Text = text,
-                    AutoSize = true
-                };
+                    lblMessage = new Label()
+                    {
+                        Left = 58,
+                        Top = 15,
+                        Width = textSize.Width + 10,
+                        Height = textSize.Height + 10,
+                        Text = text,
+                        AutoSize = true
+                    };
+                }
+                else
+                {
+                    lblMessage = new TextBox()
+                    {
+                        ReadOnly = true,
+                        Multiline = true,
+                        Left = 58,
+                        Top = 15,
+                        Width = textSize.Width + 10,
+                        Height = Math.Min( textSize.Height + 10, 500),
+                        Text = text,
+                        AutoSize = true,
+                        ScrollBars = ScrollBars.Vertical
+                    };
+                }
 
                 msgBoxFrm.Controls.Add(lblMessage);
 
@@ -155,7 +178,7 @@ namespace MissionPlanner.MsgBox
                         {
                             System.Diagnostics.Process.Start(((LinkLabel)sender).Tag.ToString());
                         }
-                        catch (Exception exception)
+                        catch (Exception)
                         {
                             Show("Failed to open link " + ((LinkLabel)sender).Tag.ToString());
                         }
@@ -205,13 +228,12 @@ namespace MissionPlanner.MsgBox
         }
 
         // from http://stackoverflow.com/questions/2512781/winforms-big-paragraph-tooltip/2512895#2512895
-        private static int maximumSingleLineTooltipLength = 85;
 
-        private static string AddNewLinesToText(string text)
+        private static string AddNewLinesToText(string text, int length = 85)
         {
-            if (text.Length < maximumSingleLineTooltipLength)
+            if (text.Length < length)
                 return text;
-            int lineLength = maximumSingleLineTooltipLength;
+            int lineLength = length;
             StringBuilder sb = new StringBuilder();
             int currentLinePosition = 0;
             for (int textIndex = 0; textIndex < text.Length; textIndex++)
@@ -352,5 +374,39 @@ namespace MissionPlanner.MsgBox
             }
         }
 
+        public static DialogResult ShowTextBox(string text, string caption, MessageBoxButtons buttons, MessageBoxIcon icon, string YesText = "Yes", string NoText = "No")
+        {
+            DialogResult answer = DialogResult.Cancel;
+
+            Console.WriteLine("CustomMessageBox ShowTextBox thread calling " + System.Threading.Thread.CurrentThread.Name);
+
+            // ensure we run this on the right thread - mono - mac
+            if (Application.OpenForms.Count > 0 && Application.OpenForms[0].InvokeRequired)
+            {
+                try
+                {
+                    Application.OpenForms[0].Invoke((Action)delegate
+                    {
+                        Console.WriteLine("CustomMessageBox ShowTextBox thread running invoke " +
+                                          System.Threading.Thread.CurrentThread.Name);
+                        answer = ShowUI(text, caption, buttons, icon, YesText, NoText, false);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex);
+                    // fall back
+                    Console.WriteLine("CustomMessageBox ShowTextBox thread running " + System.Threading.Thread.CurrentThread.Name);
+                    answer = ShowUI(text, caption, buttons, icon, YesText, NoText, false);
+                }
+            }
+            else
+            {
+                Console.WriteLine("CustomMessageBox ShowTextBox thread running " + System.Threading.Thread.CurrentThread.Name);
+                answer = ShowUI(text, caption, buttons, icon, YesText, NoText, false);
+            }
+
+            return answer;
+        }
     }
 }

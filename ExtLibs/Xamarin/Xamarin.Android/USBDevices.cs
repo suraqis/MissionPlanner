@@ -29,9 +29,23 @@ namespace Xamarin.Droid
         {
             var usbManager = (UsbManager)Application.Context.GetSystemService(Context.UsbService);
 
-            foreach (var deviceListValue in usbManager.DeviceList.Values)
+            if (usbManager == null)
+                return new List<DeviceInfo>();
+
+            foreach (var device in usbManager.DeviceList.Values)
             {
-                Log.Info(TAG,"GetDeviceInfoList "+ deviceListValue.DeviceName);
+                Log.Info(TAG,
+                    "GetDeviceInfoList " + device.DeviceName + " " + device.ProductName + " " +
+                    device.VendorId + " " + device.ProductId);
+
+                // cdc and composite
+                if (device.DeviceClass == UsbClass.Comm ||
+                    device.DeviceClass == UsbClass.Misc && device.DeviceSubclass == UsbClass.Comm)
+                {
+                    var item = (device.VendorId, device.ProductId);
+                    if(!AndroidSerialBase.cdcacmTuples.Contains(item))
+                        AndroidSerialBase.cdcacmTuples.Add((device.VendorId, device.ProductId));
+                }
             }
 
             Log.Info(TAG,"GetDeviceInfoList "+ "Refreshing device list ...");
@@ -50,18 +64,24 @@ namespace Xamarin.Droid
             {
                 try
                 {
-                    Log.Info(TAG,
-                        string.Format("GetDeviceInfoList "+"+ {0}: {1} port{2}", driver, drivers.Count,
-                            drivers.Count == 1 ? string.Empty : "s"));
+                    Log.Info(TAG, string.Format("GetDeviceInfoList "+"+ {0}: {1} ports {2}", driver, drivers.Count, driver.Ports.Count));
 
-                    Log.Info(TAG,
-                        string.Format("GetDeviceInfoList "+"+ {0}: {1} ", driver.Device.ProductName, driver.Device.ManufacturerName));
+                    Log.Info(TAG, string.Format("GetDeviceInfoList "+"+ {0}: {1} ", driver.Device.ProductName, driver.Device.ManufacturerName));
 
                     var deviceInfo = GetDeviceInfo(driver.Device);
 
-                    ans.Add(deviceInfo);
-
-                    await usbManager.RequestPermissionAsync(driver.Device, Application.Context);
+                    // support one more
+                    if (driver.Ports.Count > 1)
+                    {
+                        var deviceInfo2 = GetDeviceInfo(driver.Device);
+                        deviceInfo2.board += "-P2";
+                        ans.Add(deviceInfo);
+                        ans.Add(deviceInfo2);
+                    }
+                    else
+                    {
+                        ans.Add(deviceInfo);
+                    }
                 }
                 catch (Exception e)
                 {
@@ -91,7 +111,7 @@ namespace Xamarin.Droid
             {
                 board = device.ProductName,
                 description = device.ProductName,
-                hardwareid = String.Format("USB\\VID_{0:X4}&PID_{1:X4}", device.VendorId, device.ProductId),
+                hardwareid = String.Format("USB\\VID_{0:X4}&PID_{1:X4}&", device.VendorId, device.ProductId),
                 name = device.DeviceName
             };
             return deviceInfo;
@@ -100,8 +120,14 @@ namespace Xamarin.Droid
 
         public async Task<ICommsSerial> GetUSB(DeviceInfo di)
         {
-            var usbManager = (UsbManager) Application.Context.GetSystemService(Context.UsbService);
-            
+            var usbManager = (UsbManager)Application.Context.GetSystemService(Context.UsbService);
+
+            if (usbManager == null)
+            {
+                Log.Info(TAG, "GetUSB " + "No usbManager");
+                return null;
+            }
+
             foreach (var deviceListValue in usbManager.DeviceList.Values)
             {
                 Log.Info(TAG,"GetUSB "+ deviceListValue.DeviceName);
@@ -128,12 +154,28 @@ namespace Xamarin.Droid
                 di.hardwareid.Contains(a.Device.VendorId.ToString("X4")) &&
                 di.hardwareid.Contains(a.Device.ProductId.ToString("X4")));
 
+            var hasPermission = usbManager.HasPermission(usbdevice.Device);
+
             var permissionGranted =
                 await usbManager.RequestPermissionAsync(usbdevice.Device, Application.Context);
             if (permissionGranted)
             {
-                var defaultport = drivers.First().Ports.First();
-                if (drivers.First().Ports.Count > 1)
+                if (!hasPermission)
+                    return await GetUSB(di);
+
+                var portnumber = 0;
+                var port = usbdevice.Ports.First();
+                if (usbdevice.Ports.Count > 1)
+                {
+                    if (di.board.EndsWith("-P2"))
+                    {
+                        port = usbdevice.Ports[1];
+                        portnumber = 1;
+                    }
+                }
+                /*
+                var defaultport = usbdevice.Ports.First();
+                if (usbdevice.Ports.Count > 1)
                 {
                     ManualResetEvent mre = new ManualResetEvent(false);
 
@@ -144,12 +186,12 @@ namespace Xamarin.Droid
                         AlertDialog.Builder alert = new AlertDialog.Builder(MainActivity.Current);
                         alert.SetTitle("Multiple Ports");
                         alert.SetCancelable(false);
-                        var items = drivers.First().Ports.Select(a =>
+                        var items = usbdevice.Ports.Select(a =>
                                 a.Device.GetInterface(a.PortNumber).Name ?? a.PortNumber.ToString())
                             .ToArray();
                         alert.SetSingleChoiceItems(items, 0, (sender, args) =>
                         {
-                            defaultport = drivers.First().Ports[args.Which];
+                            defaultport = usbdevice.Ports[args.Which];
                         });
 
                         alert.SetNeutralButton("OK", (senderAlert, args) => { mre.Set(); });
@@ -161,17 +203,16 @@ namespace Xamarin.Droid
 
                     mre.WaitOne();
                 }
+                */
 
-                var portInfo = new UsbSerialPortInfo(defaultport);
+                var portInfo = new UsbSerialPortInfo(port);
 
                 int vendorId = portInfo.VendorId;
                 int deviceId = portInfo.DeviceId;
-                int portNumber = portInfo.PortNumber;
 
-                Log.Info(TAG, string.Format("GetUSB "+"VendorId: {0} DeviceId: {1} PortNumber: {2}", vendorId, deviceId, portNumber));
-
-                var driver = drivers.Where((d) => d.Device.VendorId == vendorId && d.Device.DeviceId == deviceId).FirstOrDefault();
-                var port = driver.Ports[portNumber];
+                Log.Info(TAG,
+                    string.Format("GetUSB " + "VendorId: {0} DeviceId: {1} PortNumber: {2}", vendorId, deviceId,
+                        portnumber));
 
                 var serialIoManager = new SerialInputOutputManager(usbManager, port);
 

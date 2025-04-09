@@ -1,9 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>    <UseWindowsForms>true</UseWindowsForms>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
     <Deterministic>false</Deterministic><StartupObject>MissionPlanner.Program</StartupObject><ApplicationIcon /><RootNamespace>MissionPlanner</RootNamespace>
  
   </PropertyGroup>  <ItemGroup>
@@ -409,6 +408,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="ParameterMetaDataBackup.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="APMotorLayout.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>

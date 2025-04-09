@@ -8,12 +8,13 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Timers;
 using System.Windows.Forms;
 
 namespace MissionPlanner.GCSViews.ConfigurationView
 {
-    public partial class ConfigADSB : MyUserControl, IActivate
+    public partial class ConfigADSB : MyUserControl, IActivate, IDeactivate
     {
         string searchfor = "";
 
@@ -135,6 +136,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         public string ParameterMode { get; set; }
 
         private int y = 10;
+        private int sub1;
+        private int sub2;
 
         #endregion
 
@@ -211,8 +214,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             if (!MainV2.comPort.BaseStream.IsOpen)
                 return;
 
-            if ((int)DialogResult.OK ==
-                CustomMessageBox.Show(Strings.WarningUpdateParamList, Strings.ERROR, MessageBoxButtons.OKCancel))
+            if (DialogResult.OK == Common.MessageShowAgain("Refresh Params", Strings.WarningUpdateParamList, true))
             {
                 ((Control)sender).Enabled = false;
 
@@ -255,6 +257,51 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             Console.WriteLine("Activate " + DateTime.Now.ToString("ss.fff"));
             BindParamList();
             Console.WriteLine("Activate Done " + DateTime.Now.ToString("ss.fff"));
+            /*
+            try
+            {
+                sub1 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.UAVIONIX_ADSB_OUT_CFG_FLIGHTID,
+                    (msg) =>
+                    {
+                        this.BeginInvoke((Action) delegate
+                        {
+                            var flid = (MAVLink.mavlink_uavionix_adsb_out_cfg_flightid_t) msg.data;
+
+                            var id = ASCIIEncoding.ASCII.GetString(flid.flight_id);
+
+                            txt_flid.Text = id;
+
+                            panel1.Enabled = true;
+                        });
+                        return false;
+                    });
+                sub2 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.UAVIONIX_ADSB_OUT_CFG_REGISTRATION,
+                    (msg) =>
+                    {
+                        BeginInvoke((Action) delegate
+                        {
+                            var reg = (MAVLink.mavlink_uavionix_adsb_out_cfg_registration_t) msg.data;
+
+                            var id = ASCIIEncoding.ASCII.GetString(reg.registration);
+
+                            txt_acreg.Text = id;
+
+                            panel1.Enabled = true;
+                        });
+                        return false;
+                    });
+
+                MainV2.comPort.generatePacket(MAVLink.MAVLINK_MSG_ID.UAVIONIX_ADSB_GET,
+                    new MAVLink.mavlink_uavionix_adsb_get_t(10004), MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+                MainV2.comPort.generatePacket(MAVLink.MAVLINK_MSG_ID.UAVIONIX_ADSB_GET,
+                    new MAVLink.mavlink_uavionix_adsb_get_t(10005), MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+
+            }
+            catch
+            {
+
+            }
+            */
         }
 
         /// <summary>
@@ -616,5 +663,49 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         }
 
         #endregion
+
+        public void Deactivate()
+        {
+            MainV2.comPort.UnSubscribeToPacketType(sub1);
+            MainV2.comPort.UnSubscribeToPacketType(sub2);
+        }
+
+        private void but_saveflid_Click(object sender, EventArgs e)
+        {/*
+            var flid = new MAVLink.mavlink_uavionix_adsb_out_cfg_flightid_t(txt_flid.Text.MakeBytesSize(9));
+
+            try
+            {
+                MainV2.comPort.sendPacket(flid, MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+                Thread.Sleep(200);
+                MainV2.comPort.sendPacket(flid, MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+                Thread.Sleep(200);
+                MainV2.comPort.generatePacket(MAVLink.MAVLINK_MSG_ID.UAVIONIX_ADSB_GET,
+                    new MAVLink.mavlink_uavionix_adsb_get_t(10005), MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+            }
+            catch (Exception exception)
+            {
+                CustomMessageBox.Show(Strings.ErrorCommunicating + exception.ToString(), Strings.ERROR);
+            }*/
+        }
+
+        private void but_saveacreg_Click(object sender, EventArgs e)
+        {/*
+            var acreg = new MAVLink.mavlink_uavionix_adsb_out_cfg_registration_t(txt_acreg.Text.MakeBytesSize(9));
+
+            try
+            {
+                MainV2.comPort.sendPacket(acreg, MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+                Thread.Sleep(200);
+                MainV2.comPort.sendPacket(acreg, MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+                Thread.Sleep(200);
+                MainV2.comPort.generatePacket(MAVLink.MAVLINK_MSG_ID.UAVIONIX_ADSB_GET,
+                    new MAVLink.mavlink_uavionix_adsb_get_t(10004), MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+            }
+            catch (Exception exception)
+            {
+                CustomMessageBox.Show(Strings.ErrorCommunicating + exception.ToString(), Strings.ERROR);
+            }*/
+        }
     }
 }

@@ -287,9 +287,9 @@ namespace MissionPlanner
                 }
 
                 // values
-                float rawmx = packet.xmag - (float)MainV2.comPort.MAV.cs.mag_ofs_x;
-                float rawmy = packet.ymag - (float)MainV2.comPort.MAV.cs.mag_ofs_y;
-                float rawmz = packet.zmag - (float)MainV2.comPort.MAV.cs.mag_ofs_z;
+                float rawmx = packet.xmag;
+                float rawmy = packet.ymag;
+                float rawmz = packet.zmag;
 
                 // add data
                 lock (_locker)
@@ -303,9 +303,9 @@ namespace MissionPlanner
             return true;
         }
 
-        public static async Task test()
+        public static async Task test(string file = @"C:\Users\mich1\Documents\Mission Planner\logs\ADSB\1\2022-07-26 22-25-37.tlog")
         {
-            await getOffsets(@"C:\Users\michael\Downloads\2017-12-03 19-26-47.tlog");
+            await getOffsets(file);
 
             CompassCalibrator com = new CompassCalibrator();
 
@@ -317,7 +317,7 @@ namespace MissionPlanner
                 try
                 {
                     mine.logplaybackfile =
-                        new BinaryReader(File.Open(@"C:\Users\michael\Downloads\2017-12-03 19-26-47.tlog", FileMode.Open, FileAccess.Read, FileShare.Read));
+                        new BinaryReader(File.Open(file, FileMode.Open, FileAccess.Read, FileShare.Read));
                 }
                 catch (Exception ex)
                 {
@@ -328,13 +328,6 @@ namespace MissionPlanner
 
                 mine.logreadmode = true;
 
-                var sub = mine.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.RAW_IMU, message =>
-                {
-                    var imu = message.ToStructure<MAVLink.mavlink_raw_imu_t>();
-                    com.new_sample(new Vector3f(imu.xmag, imu.ymag, imu.zmag));
-                    return true;
-                });
-
                 Vector3f offsets = null;
                 Vector3f diagonals = null;
                 Vector3f offdiagonals = null;
@@ -344,7 +337,16 @@ namespace MissionPlanner
                 {
                     MAVLink.MAVLinkMessage packetraw = await mine.readPacketAsync().ConfigureAwait(false);
 
-                    com.update(ref test);
+                    if (packetraw.msgid == (int)MAVLink.MAVLINK_MSG_ID.RAW_IMU)
+                    {
+                        var imu = packetraw.ToStructure<MAVLink.mavlink_raw_imu_t>();
+                        com.new_sample(new Vector3f(imu.xmag, imu.ymag, imu.zmag));
+
+                        com.update(ref test);
+
+                        Console.WriteLine("get_completion_percent {0} {1}", com.get_completion_percent(),
+                            com.get_completion_mask().ToHexString());
+                    }
 
                     com.get_calibration(ref offsets, ref diagonals, ref offdiagonals);
 
@@ -355,6 +357,8 @@ namespace MissionPlanner
                         break;
                     }
                 }
+
+                Console.WriteLine("get_completion_percent {0}", com.get_completion_percent());
             }
         }
 
@@ -443,11 +447,11 @@ namespace MissionPlanner
             MainV2.comPort.requestDatastream(MAVLink.MAV_DATA_STREAM.RAW_SENSORS, 50);
 
             // subscribe to data packets
-            var sub = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.RAW_IMU, ReceviedPacket);
+            var sub = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.RAW_IMU, ReceviedPacket, (byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent);
 
-            var sub2 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.SCALED_IMU2, ReceviedPacket);
+            var sub2 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.SCALED_IMU2, ReceviedPacket, (byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent);
 
-            var sub3 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.SCALED_IMU3, ReceviedPacket);
+            var sub3 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.SCALED_IMU3, ReceviedPacket, (byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent);
 
             string extramsg = "";
 
@@ -520,7 +524,7 @@ namespace MissionPlanner
                                 centre = new Vector3(lsq[0], lsq[1], lsq[2]);
                                 log.Info("new centre " + centre.ToString());
 
-                                prsphere.sphere1.CenterPoint = new OpenTK.Vector3(
+                                prsphere.sphere1.CenterPoint = new Vector3(
                                     (float) centre.x, (float) centre.y, (float) centre.z);
                             }
                         }
@@ -545,7 +549,7 @@ namespace MissionPlanner
                                 Vector3 centre2 = new Vector3(lsq[0], lsq[1], lsq[2]);
                                 log.Info("new centre2 " + centre2.ToString());
 
-                                prsphere.sphere2.CenterPoint = new OpenTK.Vector3(
+                                prsphere.sphere2.CenterPoint = new Vector3(
                                     (float) centre2.x, (float) centre2.y, (float) centre2.z);
                             }
                         }
@@ -570,7 +574,7 @@ namespace MissionPlanner
                                 Vector3 centre3 = new Vector3(lsq[0], lsq[1], lsq[2]);
                                 log.Info("new centre2 " + centre3.ToString());
 
-                                prsphere.sphere3.CenterPoint = new OpenTK.Vector3(
+                                prsphere.sphere3.CenterPoint = new Vector3(
                                     (float) centre3.x, (float) centre3.y, (float) centre3.z);
                             }
                         }
@@ -589,7 +593,7 @@ namespace MissionPlanner
                 lastcount = datacompass1.Count;
 
                 // add to sphere with center correction
-                prsphere.sphere1.AddPoint(new OpenTK.Vector3(rawmx, rawmy, rawmz));
+                prsphere.sphere1.AddPoint(new Vector3(rawmx, rawmy, rawmz));
                 prsphere.sphere1.AimClear();
 
                 if (datacompass2.Count > 30)
@@ -598,7 +602,7 @@ namespace MissionPlanner
                     float raw2my = datacompass2[datacompass2.Count - 1].Item2;
                     float raw2mz = datacompass2[datacompass2.Count - 1].Item3;
 
-                    prsphere.sphere2.AddPoint(new OpenTK.Vector3(raw2mx, raw2my, raw2mz));
+                    prsphere.sphere2.AddPoint(new Vector3(raw2mx, raw2my, raw2mz));
                     prsphere.sphere2.AimClear();
                 }
 
@@ -608,7 +612,7 @@ namespace MissionPlanner
                     float raw3my = datacompass3[datacompass3.Count - 1].Item2;
                     float raw3mz = datacompass3[datacompass3.Count - 1].Item3;
 
-                    prsphere.sphere3.AddPoint(new OpenTK.Vector3(raw3mx, raw3my, raw3mz));
+                    prsphere.sphere3.AddPoint(new Vector3(raw3mx, raw3my, raw3mz));
                     prsphere.sphere3.AimClear();
                 }
 
@@ -669,7 +673,7 @@ namespace MissionPlanner
                             displayresult = "more data needed Aim For " +
                                             GetColour((int) (theta * MathHelper.rad2deg),
                                                 (int) (phi * MathHelper.rad2deg));
-                            prsphere.sphere1.AimFor(new OpenTK.Vector3((float) point_sphere.x,
+                            prsphere.sphere1.AimFor(new Vector3((float) point_sphere.x,
                                 (float) point_sphere.y, (float) point_sphere.z));
                             //j = factor;
                             //break;
@@ -1100,6 +1104,10 @@ namespace MissionPlanner
             log.InfoFormat("magcalel 2 ofs {0},{1},{2} di {3},{4},{5} di {6} {7} {8} rad {9}", x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], rad);
 
             log.Info("Least Sq Done " + DateTime.Now);
+
+            System.Console.WriteLine("magcalel 1 ofs {0},{1},{2} di {3},{4},{5} di {6} {7} {8} rad {9}", x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], rad);
+            System.Console.WriteLine("magcalel 2 ofs {0},{1},{2} di {3},{4},{5} di {6} {7} {8} rad {9}", x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], rad);
+
 
             doDXF(vertexes, x);
 

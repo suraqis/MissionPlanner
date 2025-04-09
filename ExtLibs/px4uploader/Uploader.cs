@@ -36,6 +36,7 @@ namespace px4uploader
         public string chip_desc;
         public int bl_rev;
         public bool libre = false;
+        public byte[] sn = new byte[0];
 
         public enum Code : byte
         {
@@ -63,8 +64,13 @@ namespace px4uploader
             SET_DELAY = 0x2d, // set minimum boot delay
             GET_CHIP_DES = 0x2e,
             REBOOT = 0x30,
-            PROTO_DEBUG = 0x31,
-            PROTO_SET_BAUD = 0x33
+            DEBUG = 0x31,
+            SET_BAUD = 0x33,
+
+            EXTF_ERASE = 0x34,    // Erase sectors from external flash
+            EXTF_PROG_MULTI = 0x35,   // write bytes at external flash program address and increment
+            EXTF_READ_MULTI = 0x36,   // read bytes at address and increment
+            EXTF_GET_CRC = 0x37,	// compute & return a CRC of data in external flash
         }
 
         public enum Info {
@@ -72,13 +78,14 @@ namespace px4uploader
             BOARD_ID = 2,//	# board type
             BOARD_REV = 3,//	# board revision
             FLASH_SIZE = 4,//	# max firmware size in bytes
-            VEC_AREA = 5
+            VEC_AREA = 5,
+            EXTF_SIZE = 6
         }
 
         public const byte BL_REV_MIN = 2;//	# minimum supported bootloader protocol 
-        public const byte BL_REV_MAX = 10;//	# maximum supported bootloader protocol
-        public const byte PROG_MULTI_MAX = 64;//		# protocol max is 255, must be multiple of 4
-        public const byte READ_MULTI_MAX = 255;//		# protocol max is 255, something overflows with >= 64
+        public const byte BL_REV_MAX = 20;//	# maximum supported bootloader protocol
+        public const byte PROG_MULTI_MAX = 252;//		# protocol max is 255, must be multiple of 4
+        public const byte READ_MULTI_MAX = 252;//		# protocol max is 255, something overflows with >= 64
 
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -166,6 +173,7 @@ namespace px4uploader
         }
 
         static List<KeyValuePair<string, string>> certs = new List<KeyValuePair<string, string>>();
+        public int extf_maxsize;
 
         public static void readcerts()
         {
@@ -381,7 +389,7 @@ namespace px4uploader
                 __send(new byte[] { (byte)Code.EOC });
                 byte[] ans = __recv(4);
                 __getSync();
-                ans = ans.Reverse().ToArray();
+                //ans = ans.Reverse().ToArray();
                 Array.Copy(ans, 0, sn, a, 4);
             }
 
@@ -414,11 +422,14 @@ namespace px4uploader
 
         public void __send(byte c)
         {
+            //Console.WriteLine("__send " + c.ToString("X"));
             port.Write(new byte[] { c }, 0, 1);
         }
 
         public void __send(byte[] c)
         {
+            //foreach (var i in c)
+            //    Console.WriteLine("__send " + i.ToString("X"));
             port.Write(c, 0, c.Length);
         }
 
@@ -429,7 +440,14 @@ namespace px4uploader
             byte[] c = new byte[count];
             int pos = 0;
             while (pos < count)
+            {
                 pos += port.Read(c, pos, count - pos);
+                if (count >= 4 && c[0] == (byte)Code.INSYNC && c[1] == (byte)Code.INVALID)
+                    throw new Exception("Bad Request INSYNC INVALID");
+            }
+
+            //foreach (var i in c)
+            //    Console.WriteLine("__recv " + i.ToString("X"));
 
             return c;
         }
@@ -449,7 +467,8 @@ namespace px4uploader
             while(port.BytesToRead == 0)
             {
                 if (DateTime.Now > deadline)
-                    throw new TimeoutException("timeout waiting for responce");
+                    throw new TimeoutException("timeout waiting for response");
+                Thread.Yield();
             }
 
             byte c = __recv()[0];
@@ -484,6 +503,8 @@ namespace px4uploader
             byte c = __recv()[0];
             if (c != (byte)Code.INSYNC)
                 return false;
+
+            c = __recv()[0];
             if (c != (byte)Code.OK)
                 return false;
 
@@ -502,17 +523,62 @@ namespace px4uploader
         {
             __sync();
 
+            // fix for bootloader bug - must see a sync and a get_device
+            __getInfo(Info.BL_REV);
+
             __send(new byte[] { (byte)Code.CHIP_ERASE, (byte)Code.EOC });
-            DateTime deadline = DateTime.Now.AddSeconds(20);
-            while (DateTime.Now < deadline)
+            __wait_for_bytes(1, 20);
+
+            __getSync();
+        }
+
+        public void __erase_extf(Firmware fw)
+        {
+            __sync();
+
+            // fix for bootloader bug - must see a sync and a get_device
+            __getInfo(Info.BL_REV);
+
+            byte[] size_bytes = BitConverter.GetBytes(fw.extf_image_size);
+
+            __send(new byte[] {(byte)Code.EXTF_ERASE,
+                    size_bytes[0], size_bytes[1], size_bytes[2], size_bytes[3],
+                    (byte) Code.EOC});
+
+            __getSync();
+
+            int last_pct = 0;
+            while (true)
             {
-                System.Threading.Thread.Sleep(100);
-                if (port.BytesToRead > 0)
+                if (last_pct < 95)
                 {
-                    Console.WriteLine("__erase btr "+ port.BytesToRead);
+                    int pct = __recv()[0];
+                    if (last_pct != pct)
+                    {
+                        last_pct = pct;
+
+                        if (ProgressEvent != null)
+                            ProgressEvent(pct);
+                    }
+                }
+                else if (__trySync())
+                {
+                    if (ProgressEvent != null)
+                        ProgressEvent(100);
+
                     break;
                 }
             }
+        }
+
+        public void __program_multi_extf(byte[] data)
+        {
+            var length = (byte)data.Length;
+
+            __send((byte)Code.EXTF_PROG_MULTI);
+            __send(length);
+            __send(data);
+            __send((byte)Code.EOC);
             __getSync();
         }
 
@@ -536,6 +602,21 @@ namespace px4uploader
             }
             self.__getSync();
             return true;
+        }
+
+        bool __wait_for_bytes(int num_bytes, int timeout_secs)
+        {
+            DateTime deadline = DateTime.Now.AddSeconds(timeout_secs);
+            while (DateTime.Now < deadline)
+            {
+                port.BaseStream.Flush();
+                if (port.BytesToRead >= num_bytes)
+                {
+                    return true;
+                }
+                Thread.Yield();
+            }
+            return false;
         }
 
         bool isMatch(byte[] d1, byte[] d2)
@@ -608,6 +689,23 @@ namespace px4uploader
             }
         }
 
+        public void __program_extf(Firmware fw)
+        {
+            byte[] code = fw.extf_imagebyte;
+            List<byte[]> groups = self.__split_len(code, PROG_MULTI_MAX);
+            int a = 1;
+            foreach (Byte[] bytes in groups)
+            {
+                self.__program_multi_extf(bytes);
+
+                System.Diagnostics.Debug.WriteLine("Program extf {0}/{1}", a, groups.Count);
+
+                a++;
+                if (ProgressEvent != null)
+                    ProgressEvent((a / (float)groups.Count) * 100.0);
+            }
+        }
+
         public void __verify_v2(Firmware fw)
         {
             self.__send(new byte[] {(byte)Code.CHIP_VERIFY
@@ -657,23 +755,99 @@ namespace px4uploader
             }
         }
 
+        public void __verify_extf(Firmware fw)
+        {
+            int expect_crc = fw.extf_crc(fw.extf_image_size);
+
+            byte[] size_bytes = BitConverter.GetBytes(fw.extf_image_size);
+
+            __send(new byte[] {(byte)Code.EXTF_GET_CRC,
+                    size_bytes[0], size_bytes[1], size_bytes[2], size_bytes[3],
+                    (byte) Code.EOC});
+
+            DateTime deadline = DateTime.Now.AddSeconds(10);
+            while (DateTime.Now < deadline)
+            {
+                port.BaseStream.Flush();
+                if (port.BytesToRead >= 4)
+                {
+                    if (ProgressEvent != null)
+                        ProgressEvent(100);
+                    break;
+                }
+                if (ProgressEvent != null)
+                {
+                    TimeSpan ts = new TimeSpan(deadline.Ticks - DateTime.Now.Ticks);
+                    ProgressEvent(((10.0 - ts.TotalSeconds) / 10.0) * 100.0);
+                }
+                Thread.Yield();
+            }
+
+            __wait_for_bytes(4, 20);
+
+            int report_crc = __recv_int();
+            __getSync();
+
+            print("extf Expected 0x" + hexlify(BitConverter.GetBytes(expect_crc)) + " " + expect_crc);
+            print("extf Got      0x" + hexlify(BitConverter.GetBytes(report_crc)) + " " + report_crc);
+            if (report_crc != expect_crc)
+            {
+                throw new Exception("Program extf CRC failed");
+            }
+        }
+
+        
         public void currentChecksum(Firmware fw)
         {
             if (self.bl_rev < 3)
                 return;
 
+            __sync();
+
             this.port.ReadTimeout = 1000; // 1 sec
 
-            int expect_crc = fw.crc(self.fw_maxsize);
-            __send(new byte[] {(byte)Code.GET_CRC,
-				(byte) Code.EOC});
-            int report_crc = __recv_int();
-            self.__getSync();
+            bool sameflash = true;
+            bool sameexternalflash = true;
 
-            print("FW File 0x" + hexlify(BitConverter.GetBytes(expect_crc)) + " " + expect_crc);
-            print("Current 0x" + hexlify(BitConverter.GetBytes(report_crc)) + " " + report_crc);
+            if (self.fw_maxsize > 0)
+            {
+                int expect_crc = fw.crc(self.fw_maxsize);
+                __send(new byte[] {(byte)Code.GET_CRC,
+                    (byte) Code.EOC});
+                int report_crc = __recv_int();
+                self.__getSync();
 
-            if (expect_crc == report_crc)
+                print("FW File 0x" + hexlify(BitConverter.GetBytes(expect_crc)) + " " + expect_crc);
+                print("Current 0x" + hexlify(BitConverter.GetBytes(report_crc)) + " " + report_crc);
+
+                if (expect_crc != report_crc)
+                    sameflash = false;                    
+            }
+
+            if (self.extf_maxsize > 0)
+            {
+                int expect_crc = fw.extf_crc(fw.extf_image_size);
+
+                byte[] size_bytes = BitConverter.GetBytes(fw.extf_image_size);
+
+                __send(new byte[] {(byte)Code.EXTF_GET_CRC,
+                    size_bytes[0], size_bytes[1], size_bytes[2], size_bytes[3],
+                    (byte) Code.EOC});
+
+                // crc can be slow, give it 10s
+                __wait_for_bytes(4, 30);
+
+                int report_crc = __recv_int();
+                self.__getSync();
+
+                print("Ext FW File 0x" + hexlify(BitConverter.GetBytes(expect_crc)) + " " + expect_crc);
+                print("Current 0x" + hexlify(BitConverter.GetBytes(report_crc)) + " " + report_crc);
+
+                if (expect_crc != report_crc)
+                    sameexternalflash = false;
+            }
+
+            if (sameflash && sameexternalflash)
                 throw new Exception("Same Firmware. Not uploading");
         }
 
@@ -711,8 +885,34 @@ namespace px4uploader
                 {
                     self.chip = self.__getCHIP();
                     self.chip_desc = self.__getCHIPDES();
-                } catch {}
+                } catch { __sync(); }
             }
+
+            if (bl_rev >= 5)
+            {
+                try
+                {
+                    self.sn = self.__get_sn();
+                }
+                catch { __sync(); }
+            }
+
+            if (bl_rev >= 5)
+            {
+                try
+                {
+                    self.extf_maxsize = __getInfo(Info.EXTF_SIZE);
+                }
+                catch { __sync(); }
+            }
+
+            var line = string.Format(
+                "Found board type {0} brdrev {1} blrev {2} fwmax {3} extf {7} chip {5:X} chipdes {6} SN {8} on {4}",
+                board_type,
+                board_rev, bl_rev, fw_maxsize, port, chip, chip_desc, extf_maxsize,
+                BitConverter.ToString(self.sn).Replace("-", string.Empty));
+
+            print(line);
         }
 
         public void upload(Firmware fw)
@@ -730,17 +930,38 @@ namespace px4uploader
             if (self.fw_maxsize < fw.image_size && self.fw_maxsize != 0)
                 throw new Exception("Firmware image is too large for this board");
 
-            print("erase...");
-            self.__erase();
+            if (self.extf_maxsize < fw.extf_image_size && self.extf_maxsize != 0)
+                throw new Exception("extf image is too large for this board");
 
-            print("program...");
-            self.__program(fw);
-            
-            print("verify...");
-            if (self.bl_rev == 2)
-                self.__verify_v2(fw);
-            else
-                self.__verify_v3(fw);
+            // erasing the internal flash will prevent a case where a unplug during external flashing will cause bootloader mode on reboot as there i no valid internal flash. even if the external was valid.
+            if (fw.image_size > 0)
+            {
+                print("erase...");
+                self.__erase();
+            }
+
+            // external first - second internal
+            if (fw.extf_image_size > 0)
+            {
+                print("erase extf...");
+                self.__erase_extf(fw);
+                print("program extf...");
+                self.__program_extf(fw);
+                print("verify extf...");
+                self.__verify_extf(fw);
+            }
+
+            if (fw.image_size > 0)
+            {
+                print("program...");
+                self.__program(fw);
+
+                print("verify...");
+                if (self.bl_rev == 2)
+                    self.__verify_v2(fw);
+                else
+                    self.__verify_v3(fw);
+            }
 
             print("done, rebooting.");
             self.__reboot();

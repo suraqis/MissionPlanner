@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using ClipperLib;
 using log4net;
 using MissionPlanner.Comms;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace MissionPlanner.Utilities
 {
@@ -18,31 +20,38 @@ namespace MissionPlanner.Utilities
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        private static List<ConnectionInfo> connectionInfos = new List<ConnectionInfo>()
+        public static List<ConnectionInfo> connectionInfos = new List<ConnectionInfo>()
         {
             new ConnectionInfo("Mavlink default port", true, 14550, ProtocolType.Udp, ConnectionFormat.MAVLink,
                 Direction.Inbound, ""),
             new ConnectionInfo("Mavlink alt port", true, 14551, ProtocolType.Udp, ConnectionFormat.MAVLink,
                 Direction.Inbound, ""),
 
+            new ConnectionInfo("Mavlink sitl port", false, 5760, ProtocolType.Tcp, ConnectionFormat.MAVLink,
+                Direction.Outbound, "127.0.0.1"),
+                      
             new ConnectionInfo("Video udp 5000 h264", true, 5000, ProtocolType.Udp, ConnectionFormat.Video,
                 Direction.Inbound,
-                "udpsrc port=5000 buffer-size=90000 ! application/x-rtp ! rtph264depay ! avdec_h264 ! queue leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+                "udpsrc port=5000 buffer-size=90000 ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264 ! decodebin3 ! queue max-size-buffers=1 leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
             new ConnectionInfo("Video udp 5100 h264", true, 5100, ProtocolType.Udp, ConnectionFormat.Video,
                 Direction.Inbound,
-                "udpsrc port=5100 buffer-size=90000 ! application/x-rtp ! rtph264depay ! avdec_h264 ! queue leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+                "udpsrc port=5100 buffer-size=90000 ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264 ! decodebin3 ! queue max-size-buffers=1 leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+            // "C:\ProgramData\Mission Planner\gstreamer\1.0\x86_64\bin\gst-launch-1.0.exe" videotestsrc pattern=ball  is-live=true ! video/x-raw,width=640,height=480 ! clockoverlay ! x264enc ! rtph264pay ! udpsink host=127.0.0.1 port=5600
             new ConnectionInfo("Video udp 5600 h264", true, 5600, ProtocolType.Udp, ConnectionFormat.Video,
                 Direction.Inbound,
-                "udpsrc port=5600 buffer-size=90000 ! application/x-rtp ! rtph264depay ! avdec_h264 ! queue leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+                "udpsrc port=5600 buffer-size=90000 ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264 ! decodebin3 ! queue max-size-buffers=1 leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
 
             new ConnectionInfo("Video udp 5601 h265", true, 5601, ProtocolType.Udp, ConnectionFormat.Video,
                 Direction.Inbound,
-                "udpsrc port=5601 buffer-size=90000 ! application/x-rtp ! rtph265depay ! avdec_h265 ! queue leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+                "udpsrc port=5601 buffer-size=90000 ! application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H265 ! decodebin3 ! queue max-size-buffers=1 leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
 
             new ConnectionInfo("SkyViper", false, 554, ProtocolType.Tcp, ConnectionFormat.Video, Direction.Outbound,
-                "rtspsrc location=rtsp://192.168.99.1/media/stream2 debug=false buffer-mode=1 latency=100 ntp-time-source=3 ! application/x-rtp ! rtph264depay ! queue ! avdec_h264 ! queue leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
-            new ConnectionInfo("HereLink", false, 8554, ProtocolType.Tcp, ConnectionFormat.Video, Direction.Outbound,
-                "rtspsrc location=rtsp://192.168.43.1:8554/fpv_stream latency=41 udp-reconnect=1 timeout=0 do-retransmission=false ! application/x-rtp ! rtph264depay ! h264parse ! queue ! avdec_h264 ! queue leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+                "rtspsrc location=rtsp://192.168.99.1/media/stream2 debug=false buffer-mode=1 latency=100 ntp-time-source=3 ! application/x-rtp ! decodebin3 ! queue max-size-buffers=1 leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+            new ConnectionInfo("HereLink Wifi", false, 8554, ProtocolType.Tcp, ConnectionFormat.Video, Direction.Outbound,
+                "rtspsrc location=rtsp://192.168.43.1:8554/fpv_stream latency=41 udp-reconnect=1 timeout=0 do-retransmission=false ! application/x-rtp ! decodebin3 ! queue max-size-buffers=1 leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+            new ConnectionInfo("HereLink GCS", false, 8554, ProtocolType.Tcp, ConnectionFormat.Video, Direction.Outbound,
+                "rtspsrc location=rtsp://192.168.0.10:8554/H264Video latency=41 udp-reconnect=1 timeout=0 do-retransmission=false ! application/x-rtp ! decodebin3 ! queue max-size-buffers=1 leaky=2 ! videoconvert ! video/x-raw,format=BGRA ! appsink name=outsink sync=false"),
+
             new ConnectionInfo("Serial", false, 57600, ProtocolType.Serial, ConnectionFormat.MAVLink,
                 Direction.Outbound, ""),
 
@@ -64,136 +73,249 @@ namespace MissionPlanner.Utilities
 
             foreach (var connectionInfo in connectionInfos)
             {
-                if (connectionInfo.Enabled == false)
-                    continue;
+                ProcessEntry(connectionInfo);
+            }
+        }
 
-                log.Info(connectionInfo.ToJSON());
+        public static void ProcessEntry(ConnectionInfo connectionInfo)
+        {
+            if (connectionInfo.Enabled == false)
+                return;
 
-                if (connectionInfo.Format == ConnectionFormat.MAVLink)
+            log.Info(connectionInfo.ToJSON());
+
+            if (connectionInfo.Format == ConnectionFormat.MAVLink)
+            {
+                if (connectionInfo.Protocol == ProtocolType.Udp && connectionInfo.Direction == Direction.Inbound)
                 {
-                    if (connectionInfo.Protocol == ProtocolType.Udp && connectionInfo.Direction == Direction.Inbound)
+                    try
                     {
-                        try
-                        {
-                            var client = new UdpClient(connectionInfo.Port);
-                            client.BeginReceive(clientdataMAVLink, client);
-                        }
-                        catch (Exception ex)
-                        {
-                            log.Error(ex);
-                        }
-
-                        continue;
+                        var client = new UdpClient(connectionInfo.Port);
+                        client.BeginReceive(clientdataMAVLink, client);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex);
                     }
 
-                    if (connectionInfo.Protocol == ProtocolType.Udp && connectionInfo.Direction == Direction.Outbound)
-                    {
-                        try
-                        {
-                            // create and set default dest
-                            var client = new UdpClient(connectionInfo.ConfigString, connectionInfo.Port);
-                            client.SendAsync(new byte[] {0}, 1);
-                            client.BeginReceive(clientdataMAVLink, client);
-                        }
-                        catch (Exception ex)
-                        {
-                            log.Error(ex);
-                        }
+                    return;
+                }
 
-                        continue;
+                if (connectionInfo.Protocol == ProtocolType.Udp && connectionInfo.Direction == Direction.Outbound)
+                {
+                    try
+                    {
+                        // create and set default dest
+                        var client = new UdpClient(connectionInfo.ConfigString, connectionInfo.Port);
+                        client.SendAsync(new byte[] { 0 }, 1);
+                        client.BeginReceive(clientdataMAVLink, client);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex);
                     }
 
-                    if (connectionInfo.Protocol == ProtocolType.Serial &&
-                        connectionInfo.Direction == Direction.Outbound)
+                    return;
+                }
+
+                if (connectionInfo.Protocol == ProtocolType.Tcp &&
+                   connectionInfo.Direction == Direction.Outbound)
+                {
+                    try
                     {
-                        try
+                        // try anything already connected
+                        Task.Run(() =>
                         {
-                            // try anything already connected
-                            Task.Run(() =>
+
+                            try
                             {
-                                Parallel.ForEach(SerialPort.GetPortNames(), port =>
+                                var serial = new TcpSerial();
+                                serial.Host = connectionInfo.ConfigString;
+                                serial.Port = connectionInfo.Port.ToString();
+                                serial.ReadBufferSize = 1024 * 300;
+                                serial.Open();
+                                // sample 1.2seconds
+                                Thread.Sleep(1200);
+                                var btr = serial.BytesToRead;
+                                var buffer = new byte[btr];
+                                serial.Read(buffer, 0, buffer.Length);
+                                //serial.Close();
+                                var parse = new MAVLink.MavlinkParse();
+                                var st = buffer.ToMemoryStream();
+                                while (st.Position < st.Length)
                                 {
-                                    try
+                                    var packet = parse.ReadPacket(st);
+                                    if (packet != null)
                                     {
-                                        var serial = new SerialPort(port, connectionInfo.Port);
-                                        serial.ReadBufferSize = 1024 * 300;
-                                        serial.Open();
-                                        // sample 1.2seconds
-                                        Thread.Sleep(1200);
-                                        var btr = serial.BytesToRead;
-                                        var buffer = new byte[btr];
-                                        serial.Read(buffer, 0, buffer.Length);
-                                        serial.Close();
-                                        var parse = new MAVLink.MavlinkParse();
-                                        var st = buffer.ToMemoryStream();
-                                        while (st.Position < st.Length)
+                                        if (packet.msgid == (int)MAVLink.MAVLINK_MSG_ID.HEARTBEAT)
                                         {
-                                            var packet = parse.ReadPacket(st);
-                                            if (packet != null)
+                                            NewMavlinkConnection?.BeginInvoke(null, serial, null, null);
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                            }
+
+                        });
+
+
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex);
+                    }
+
+                    return;
+                }
+
+                if (connectionInfo.Protocol == ProtocolType.Tcp &&
+                   connectionInfo.Direction == Direction.Inbound)
+                {
+                    try
+                    {
+                        // try anything already connected
+                        Task.Run(() =>
+                        {
+
+                            try
+                            {
+                                TcpListener listener = new TcpListener(IPAddress.Any, connectionInfo.Port);
+                                listener.Start();
+                                var client = listener.AcceptTcpClient();
+                                var serial = new TcpSerial();
+                                serial.client = client;
+                                serial.ReadBufferSize = 1024 * 300;
+                                serial.Open();
+                                // sample 1.2seconds
+                                Thread.Sleep(1200);
+                                var btr = serial.BytesToRead;
+                                var buffer = new byte[btr];
+                                serial.Read(buffer, 0, buffer.Length);
+                                //serial.Close();
+                                var parse = new MAVLink.MavlinkParse();
+                                var st = buffer.ToMemoryStream();
+                                while (st.Position < st.Length)
+                                {
+                                    var packet = parse.ReadPacket(st);
+                                    if (packet != null)
+                                    {
+                                        if (packet.msgid == (int)MAVLink.MAVLINK_MSG_ID.HEARTBEAT)
+                                        {
+                                            NewMavlinkConnection?.BeginInvoke(null, serial, null, null);
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                            }
+
+                        });
+
+
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex);
+                    }
+
+                    return;
+                }
+
+                if (connectionInfo.Protocol == ProtocolType.Serial &&
+                    connectionInfo.Direction == Direction.Outbound)
+                {
+                    try
+                    {
+                        // try anything already connected
+                        Task.Run(() =>
+                        {
+                            Parallel.ForEach(SerialPort.GetPortNames(), port =>
+                            {
+                                try
+                                {
+                                    var serial = new SerialPort(port, connectionInfo.Port);
+                                    serial.ReadBufferSize = 1024 * 300;
+                                    serial.Open();
+                                    // sample 1.2seconds
+                                    Thread.Sleep(1200);
+                                    var btr = serial.BytesToRead;
+                                    var buffer = new byte[btr];
+                                    serial.Read(buffer, 0, buffer.Length);
+                                    serial.Close();
+                                    var parse = new MAVLink.MavlinkParse();
+                                    var st = buffer.ToMemoryStream();
+                                    while (st.Position < st.Length)
+                                    {
+                                        var packet = parse.ReadPacket(st);
+                                        if (packet != null)
+                                        {
+                                            if (packet.msgid == (int)MAVLink.MAVLINK_MSG_ID.HEARTBEAT)
                                             {
-                                                if (packet.msgid == (int) MAVLink.MAVLINK_MSG_ID.HEARTBEAT)
-                                                {
-                                                    NewMavlinkConnection?.BeginInvoke(null, serial, null, null);
-                                                    return;
-                                                }
+                                                NewMavlinkConnection?.BeginInvoke(null, serial, null, null);
+                                                return;
                                             }
                                         }
                                     }
-                                    catch
-                                    {
-                                    }
-                                });
+                                }
+                                catch
+                                {
+                                }
                             });
+                        });
 
 
-                        }
-                        catch (Exception ex)
-                        {
-                            log.Error(ex);
-                        }
-
-                        continue;
                     }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex);
+                    }
+
+                    return;
                 }
-                else if (connectionInfo.Format == ConnectionFormat.Video)
+            }
+            else if (connectionInfo.Format == ConnectionFormat.Video)
+            {
+                if (connectionInfo.Protocol == ProtocolType.Udp && connectionInfo.Direction == Direction.Inbound)
                 {
-                    if (connectionInfo.Protocol == ProtocolType.Udp && connectionInfo.Direction == Direction.Inbound)
+                    try
                     {
-                        try
-                        {
-                            var client = new UdpClient(connectionInfo.Port, AddressFamily.InterNetwork);
-                            client.BeginReceive(clientdataVideo, client);
-                        }
-                        catch (Exception ex)
-                        {
-                            log.Error(ex);
-                        }
-
-                        continue;
+                        var client = new UdpClient(connectionInfo.Port, AddressFamily.InterNetwork);
+                        client.BeginReceive(clientdataVideo, client);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex);
                     }
 
-                    if (connectionInfo.Protocol == ProtocolType.Tcp && connectionInfo.Direction == Direction.Inbound)
-                    {
-                        try
-                        {
-                            var client = new TcpListener(IPAddress.Any, connectionInfo.Port);
-                            client.Start();
-                            client.BeginAcceptTcpClient(clientdatatcpvideo, client);
-                        }
-                        catch (Exception ex)
-                        {
-                            log.Error(ex);
-                        }
+                    return;
+                }
 
-                        continue;
+                if (connectionInfo.Protocol == ProtocolType.Tcp && connectionInfo.Direction == Direction.Inbound)
+                {
+                    try
+                    {
+                        var client = new TcpListener(IPAddress.Any, connectionInfo.Port);
+                        client.Start();
+                        client.BeginAcceptTcpClient(clientdatatcpvideo, client);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Error(ex);
                     }
 
-                    if (connectionInfo.Direction == Direction.Outbound)
-                    {
-                        NewVideoStream?.BeginInvoke(null,
-                            connectionInfos.First(a => a == connectionInfo).ConfigString, null, null);
-                        continue;
-                    }
+                    return;
+                }
+
+                if (connectionInfo.Direction == Direction.Outbound)
+                {
+                    NewVideoStream?.BeginInvoke(null,
+                        connectionInfos.First(a => a == connectionInfo).ConfigString, null, null);
+                    return;
                 }
             }
         }
@@ -248,6 +370,9 @@ namespace MissionPlanner.Utilities
         public static event EventHandler<string> NewVideoStream;
         public static event EventHandler<ICommsSerial> NewMavlinkConnection;
 
+        public static void RaiseNewVideoStream(object E, string s) => NewVideoStream?.Invoke(E, s);
+        public static void RaiseNewMavlinkConnection(object E, ICommsSerial s) => NewMavlinkConnection?.Invoke(E, s);
+
         private static void clientdataMAVLink(IAsyncResult ar)
         {
             var client = ((UdpClient) ar.AsyncState);
@@ -256,13 +381,28 @@ namespace MissionPlanner.Utilities
                 return;
             try
             {
-                var port = ((IPEndPoint) client.Client.LocalEndPoint).Port;
+                ICommsSerial commsSerial = null;
 
-                var udpclient = new Comms.UdpSerial(client);
+                var port = ((IPEndPoint)client.Client.LocalEndPoint).Port;
 
-                udpclient.Port = port.ToString();
+                if (client.Client.Connected) 
+                {
+                    Comms.UdpSerialConnect udpclient = new Comms.UdpSerialConnect();
+                    udpclient.client = client;
+                    udpclient.IsOpen = true;
+                    udpclient.hostEndPoint = (IPEndPoint)client.Client.RemoteEndPoint;
+                    udpclient.Port = port.ToString();
+                    commsSerial = udpclient;
+                }
+                else
+                {
+                    
+                    var udpclient = new Comms.UdpSerial(client);
+                    udpclient.Port = port.ToString();
+                    commsSerial = udpclient;
+                }               
 
-                NewMavlinkConnection?.BeginInvoke(null, udpclient, null, null);
+                NewMavlinkConnection?.BeginInvoke(null, commsSerial, null, null);
             }
             catch (Exception ex)
             {
@@ -280,9 +420,15 @@ namespace MissionPlanner.Utilities
             public string Label;
             public bool Enabled = true;
             public int Port;
+            [JsonConverter(typeof(StringEnumConverter))]
             public ProtocolType Protocol;
+            [JsonConverter(typeof(StringEnumConverter))]
             public ConnectionFormat Format;
+            [JsonConverter(typeof(StringEnumConverter))]
             public Direction Direction;
+            /// <summary>
+            /// has a different meaning depending on the protocol - eg ip or serial port
+            /// </summary>
             public string ConfigString;
 
             public ConnectionInfo(string label, bool enabled, int port, ProtocolType protocol, ConnectionFormat format,

@@ -55,6 +55,13 @@ public partial class MAVLink
         public string Text { get; set; }
     }
 
+    public class hasLocation : Attribute
+    {
+        public hasLocation()
+        {
+        }
+    }
+
     public class MavlinkParse
     {
         public int packetcount = 0;
@@ -89,7 +96,7 @@ public partial class MAVLink
                     timeout = 60000;
             }
 
-            DateTime to = DateTime.Now.AddMilliseconds(timeout);
+            DateTime to = DateTime.UtcNow.AddMilliseconds(timeout);
 
             int toread = count;
             int pos = offset;
@@ -105,12 +112,12 @@ public partial class MAVLink
 
                 // reset timeout if we get data
                 if (read > 0)
-                    to = DateTime.Now.AddMilliseconds(timeout);
+                    to = DateTime.UtcNow.AddMilliseconds(timeout);
 
                 if (toread == 0)
                     break;
 
-                if (DateTime.Now > to)
+                if (DateTime.UtcNow > to)
                 {
                     throw new TimeoutException("Timeout waiting for data");
                 }
@@ -350,15 +357,15 @@ public partial class MAVLink
                 {
                     signingKey = new byte[32];
                 }
-
-                using (SHA256 signit = SHA256.Create())
+                
+                using (SHA256CryptoServiceProvider signit = new SHA256CryptoServiceProvider())
                 {
                     MemoryStream ms = new MemoryStream();
                     ms.Write(signingKey, 0, signingKey.Length);
                     ms.Write(packet, 0, i);
                     ms.Write(sig, 0, sig.Length);
 
-                    var ctx = signit.ComputeHash(ms.GetBuffer());
+                    var ctx = signit.ComputeHash(ms.ToArray());
                     // trim to 48
                     Array.Resize(ref ctx, 6);
 

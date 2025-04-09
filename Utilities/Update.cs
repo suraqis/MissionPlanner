@@ -14,6 +14,8 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Org.BouncyCastle.Crypto.Digests;
+using System.Reflection;
 
 namespace MissionPlanner.Utilities
 {
@@ -64,12 +66,14 @@ namespace MissionPlanner.Utilities
                 string exePath = Path.GetDirectoryName(Application.ExecutablePath);
                 if (MONO)
                 {
-                    process.StartInfo.FileName = "mono";
-                    process.StartInfo.Arguments = " \"" + exePath + Path.DirectorySeparatorChar + "Updater.exe\"" +
-                                                  "  \"" + Application.ExecutablePath + "\"";
+                    process.StartInfo.WorkingDirectory = exePath;
+                    process.StartInfo.FileName = "/bin/bash";
+                    process.StartInfo.Arguments = " -c 'mono \"" + exePath + Path.DirectorySeparatorChar + "Updater.exe\"" +
+                                                  "  \"" + Application.ExecutablePath + "\"'";
                 }
                 else
                 {
+                    process.StartInfo.WorkingDirectory = exePath;
                     process.StartInfo.FileName = exePath + Path.DirectorySeparatorChar + "Updater.exe";
                     process.StartInfo.Arguments = Application.ExecutablePath;
                 }
@@ -115,7 +119,7 @@ namespace MissionPlanner.Utilities
             if (dobeta)
                 baseurl = ConfigurationManager.AppSettings["BetaUpdateLocationVersion"];
 
-            if (baseurl == "")
+            if (baseurl == "" || baseurl == null)
                 return;
 
             string path = Path.GetDirectoryName(Application.ExecutablePath);
@@ -265,40 +269,13 @@ namespace MissionPlanner.Utilities
                     files.Add(file);
                 }
 
-                // cleanup unused dlls and exes
-                dlls.ForEach(dll =>
-                {
-                    try
-                    {
-                        var result = files.Any(task => Path.Combine(Settings.GetRunningDirectory(), task).ToLower().Equals(dll.ToLower()));
-
-                        if (result == false)
-                            File.Delete(dll);
-                    }
-                    catch { }
-                });
-
-                exes.ForEach(exe =>
-                {
-                    try
-                    {
-                        var result = files.Any(task => Path.Combine(Settings.GetRunningDirectory(), task).ToLower().Equals(exe.ToLower()));
-
-                        if (result == false)
-                            File.Delete(exe);
-                    }
-                    catch { }
-                });
-
-
-
                 // background md5
                 List<Tuple<string, string, Task<bool>>> tasklist = new List<Tuple<string, string, Task<bool>>>();
 
                 for (int i = 0; i < matchs.Count; i++)
                 {
-                    string hash = matchs[i].Groups[1].Value.ToString();
-                    string file = matchs[i].Groups[2].Value.ToString();
+                    string hash = matchs[i].Groups[1].Value.ToString().Trim();
+                    string file = matchs[i].Groups[2].Value.ToString().Trim();
 
                     if (file.ToLower().EndsWith("files.html"))
                         continue;
@@ -311,7 +288,7 @@ namespace MissionPlanner.Utilities
                 int count = tasklist.Count(a =>
                 {
                     a.Item3.Wait();
-                    return !a.Item3.Result;
+                    return !a.Item3.GetAwaiter().GetResult();
                 });
 
                 // parallel download
@@ -333,8 +310,66 @@ namespace MissionPlanner.Utilities
 
                     return a.Item1.CompareTo(b.Item1);
                 });
+                /*
+                if (frmProgressReporter != null)
+                    frmProgressReporter.UpdateProgressAndStatus(-1, "Downloading parts");
 
+                // start download
+                if (baseurl.ToLower().Contains(".zip"))
+                {
+                    List<(int, int)> ranges = new List<(int, int)>();
+
+                    using (DownloadStream ds = new DownloadStream(baseurl))
+                    using (ZipArchive zip = new ZipArchive(ds))
+                    {
+                        FieldInfo fieldInfo = typeof(ZipArchiveEntry).GetField("_offsetOfLocalHeader", BindingFlags.NonPublic | BindingFlags.Instance);
+                        var extents = zip.Entries.Select(e =>
+                        {
+                            var _offsetOfLocalHeader = (long)fieldInfo.GetValue(e);
+                            return (e.FullName, _offsetOfLocalHeader);
+                        }).OrderBy(a => a._offsetOfLocalHeader);
+
+                        tasklist.ForEach(task => {
+
+                            task.Item3.Wait();
+                            bool match = task.Item3.GetAwaiter().GetResult();
+
+                            if (!match)
+                            {
+                                extents.ForEach(entry1 =>
+                                {
+                                    var fn = entry1.FullName;
+
+                                    var diskfn = task.Item1;
+
+                                    if (diskfn.EndsWith(fn))
+                                    {
+                                        var next = ds.Length;
+                                        zip.Entries.ForEach(entry2 => {
+                                            var _offsetOfLocalHeader2 = (long)fieldInfo.GetValue(entry2);
+                                            if (_offsetOfLocalHeader2 > entry1._offsetOfLocalHeader)
+                                                next = Math.Min(_offsetOfLocalHeader2, next);
+                                        });
+
+                                        ranges.Add(((int)entry1._offsetOfLocalHeader, (int)(next)));
+                                    }
+                                });
+                            }
+                        });
+
+                        ranges = ranges.SimplifyIntervals().ToList();
+                        ranges.ForEach(range => {
+                            ds.chunksize = range.Item2 - range.Item1;
+                            ds.getAllData(range.Item1, range.Item2);
+                        });
+                        
+                    }
+                }
+                */
                 int done = 0;
+
+                var client = new HttpClient();
+                client.DefaultRequestHeaders.Add("User-Agent", Settings.Instance.UserAgent);
 
                 Parallel.ForEach(tasklist, opt, task =>
                 //foreach (var task in tasklist)
@@ -343,7 +378,7 @@ namespace MissionPlanner.Utilities
                     string hash = task.Item2;
                     // check if existing matchs hash
                     task.Item3.Wait();
-                    bool match = task.Item3.Result;
+                    bool match = task.Item3.GetAwaiter().GetResult();
 
                     if (!match)
                     {
@@ -377,7 +412,7 @@ namespace MissionPlanner.Utilities
                             else
                             {
                                 GetNewFile(frmProgressReporter, baseurl + subdir.Replace('\\', '/'), subdir,
-                                    Path.GetFileName(file));
+                                    Path.GetFileName(file), client);
                             }
 
                             // check the new downloaded file matchs hash
@@ -399,6 +434,31 @@ namespace MissionPlanner.Utilities
                             frmProgressReporter.UpdateProgressAndStatus(-1, Strings.Checking + file);
                     }
                 });
+
+                // cleanup unused dlls and exes
+                dlls.ForEach(dll =>
+                {
+                    try
+                    {
+                        var result = files.Any(task => Path.GetFullPath(Path.Combine(Settings.GetRunningDirectory(), task)).ToLower().Equals(dll.ToLower()));
+
+                        if (result == false)
+                            File.Delete(dll);
+                    }
+                    catch { }
+                });
+
+                exes.ForEach(exe =>
+                {
+                    try
+                    {
+                        var result = files.Any(task => Path.GetFullPath(Path.Combine(Settings.GetRunningDirectory(), task)).ToLower().Equals(exe.ToLower()));
+
+                        if (result == false)
+                            File.Delete(exe);
+                    }
+                    catch { }
+                });
             }
         }
 
@@ -408,11 +468,14 @@ namespace MissionPlanner.Utilities
             {
                 if (File.Exists(filename))
                 {
-                    using (var md5 = MD5.Create())
+                    var md5 = new MD5Digest();
                     {
                         using (var stream = File.OpenRead(filename))
                         {
-                            var answer = BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", "").ToLower();
+                            stream.ReadChunks().ForEach(a => md5.BlockUpdate(a, 0, a.Length));
+                            var result = new byte[md5.GetDigestSize()];
+                            md5.DoFinal(result, 0);
+                            var answer = BitConverter.ToString(result).Replace("-", "").ToLower();
 
                             log.Debug(filename + "," + hash + "," + answer);
 
@@ -490,7 +553,7 @@ namespace MissionPlanner.Utilities
                     return;
                 }
 
-                ds.chunksize = (int) entry.CompressedLength;
+                ds.chunksize = (int)entry.CompressedLength + 2048;
 
                 log.InfoFormat("unzip {0}", file);
 
@@ -506,7 +569,8 @@ namespace MissionPlanner.Utilities
             }
         }
 
-        static void GetNewFile(IProgressReporterDialogue frmProgressReporter, string baseurl, string subdir, string file)
+        static void GetNewFile(IProgressReporterDialogue frmProgressReporter, string baseurl, string subdir,
+            string file, HttpClient httpClient)
         {
             // create dest dir
             string dir = Path.GetDirectoryName(Application.ExecutablePath) + Path.DirectorySeparatorChar + subdir;
@@ -533,28 +597,16 @@ namespace MissionPlanner.Utilities
                 try
                 {
                     string url = baseurl + file + "?" + new Random().Next();
-                    // Create a request using a URL that can receive a post. 
-                    WebRequest request = WebRequest.Create(url);
-                    if (!String.IsNullOrEmpty(Settings.Instance.UserAgent))
-                        ((HttpWebRequest)request).UserAgent = Settings.Instance.UserAgent;
-                    log.Info("GetNewFile " + url);
-                    // Set the Method property of the request to GET.
-                    request.Method = "GET";
-                    // Allow compressed content
-                    ((HttpWebRequest)request).AutomaticDecompression = DecompressionMethods.GZip |
-                                                                        DecompressionMethods.Deflate;
-                    // tell server we allow compress content
-                    request.Headers.Add("Accept-Encoding", "gzip,deflate");
                     // Get the response.
-                    using (WebResponse response = request.GetResponse())
+                    using (var response = client.GetAsync(url).GetAwaiter().GetResult())
                     {
                         // Display the status.
-                        log.Info(((HttpWebResponse)response).StatusDescription);
+                        log.Info(response.ReasonPhrase);
                         // Get the stream containing content returned by the server.
-                        Stream dataStream = response.GetResponseStream();
+                        Stream dataStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
 
                         // from head
-                        long bytes = response.ContentLength;
+                        long bytes = response.Content.Headers.ContentLength();
 
                         long contlen = bytes;
 
@@ -630,6 +682,7 @@ namespace MissionPlanner.Utilities
             #region Fetch Parameter Meta Data
 
             var progressReporterDialogue = ((IProgressReporterDialogue)sender);
+            /*
             progressReporterDialogue.UpdateProgressAndStatus(-1, "Getting updated parameter documentation");
 
             try
@@ -652,7 +705,7 @@ namespace MissionPlanner.Utilities
                 log.Error(ex.ToString());
                 CustomMessageBox.Show("Error getting Parameter Information");
             }
-
+            */
             #endregion Fetch Parameter Meta Data
 
             progressReporterDialogue.UpdateProgressAndStatus(-1, "Getting Base URL");

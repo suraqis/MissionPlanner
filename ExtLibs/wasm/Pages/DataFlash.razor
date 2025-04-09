@@ -21,10 +21,10 @@
 @using MissionPlanner.ArduPilot
 @using Newtonsoft.Json
 @using Org.BouncyCastle.Utilities.Encoders
-@using Microsoft.AspNetCore.Blazor.Services;
-@using Mono.WebAssembly.Interop;
+
 @using System.Runtime.InteropServices
 @using System.Text.RegularExpressions
+@using Microsoft.JSInterop.WebAssembly
 @using SevenZip
 @using Tewr.Blazor.FileReader
 @implements IDisposable
@@ -889,12 +889,16 @@ StringToSign = VERB + "\n" +
 
             log.Debug(info.ToJSON());
 
-            buffer = new byte[info.Size];
+            //buffer = new byte[info.Size];
 
-            var handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            //var handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
 
-            var js = JSRuntime as MonoWebAssemblyJSRuntime;
-            js.InvokeUnmarshalled<byte[], string, bool>("filebuffer", buffer, "fileReadyDF");
+            //var js = JSRuntime as WebAssemblyJSRuntime;
+            //js.InvokeUnmarshalled<byte[], string, bool>("filebuffer", buffer, "fileReadyDF");
+
+            MemoryStream memoryStream = await file.CreateMemoryStreamAsync(4096);
+
+            instance.ProcessStream(memoryStream);
         }
 
         log.Info("ReadFile done");

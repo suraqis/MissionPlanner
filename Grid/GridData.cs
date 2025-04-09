@@ -27,6 +27,7 @@ namespace MissionPlanner.Grid
         public decimal overshoot1;
         public decimal overshoot2;
         public decimal leadin;
+        public decimal leadin2;
         public string startfrom;
         public decimal overlap;
         public decimal sidelap;
@@ -41,6 +42,10 @@ namespace MissionPlanner.Grid
         // plane settings
         public bool alternateLanes;
         public decimal minlaneseparation;
+        // spiral settings
+        public decimal clockwiseLaps;
+        public decimal laps;
+        public bool matchPerimeter;
 
         // camera config
         public bool trigdist;

@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Net.Http;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace GMap.NET.MapProviders
 {
@@ -133,7 +134,13 @@ namespace GMap.NET.MapProviders
         public static readonly CzechSatelliteMapProvider CzechSatelliteMap = CzechSatelliteMapProvider.Instance;
         public static readonly CzechHybridMapProvider CzechHybridMap = CzechHybridMapProvider.Instance;
         public static readonly CzechTuristMapProvider CzechTuristMap = CzechTuristMapProvider.Instance;
+
+        public static readonly CzechTuristWinterMapProvider
+            CzechTuristWinterMap = CzechTuristWinterMapProvider.Instance;
+
         public static readonly CzechHistoryMapProvider CzechHistoryMap = CzechHistoryMapProvider.Instance;
+        public static readonly CzechGeographicMapProvider CzechGeographicMap = CzechGeographicMapProvider.Instance;
+
 
         public static readonly ArcGIS_Imagery_World_2D_MapProvider ArcGIS_Imagery_World_2D_Map = ArcGIS_Imagery_World_2D_MapProvider.Instance;
         public static readonly ArcGIS_ShadedRelief_World_2D_MapProvider ArcGIS_ShadedRelief_World_2D_Map = ArcGIS_ShadedRelief_World_2D_MapProvider.Instance;
@@ -318,7 +325,7 @@ namespace GMap.NET.MapProviders
         /// </summary>                  
         public static string UserAgent =
             string.Format(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36 Edge/17.17074");
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36 Edge/17.17074");
 
         /// <summary>
         /// timeout for provider connections
@@ -385,9 +392,57 @@ namespace GMap.NET.MapProviders
             return response.ContentType.Contains(responseContentType);
         }
 
+        HttpClient client = new HttpClient();
+
         protected PureImage GetTileImageUsingHttp(string url)
         {
             PureImage ret = null;
+
+            using (var request = new HttpRequestMessage(HttpMethod.Get, url))
+            {
+                request.Headers.Add("User-Agent", UserAgent);
+                request.Headers.Add("Accept", requestAccept);
+                if (!string.IsNullOrEmpty(RefererUrl))
+                    request.Headers.Add("Referer", RefererUrl);
+
+                MemoryStream data = Task.Run(async () =>
+                {
+                    using (var response = await client.SendAsync(request))
+                    {
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var stream = await response.Content.ReadAsStreamAsync();
+                            return Stuff.CopyStream(stream, false);
+                        }
+
+                        throw new WebException((int)response.StatusCode + " " + response.ReasonPhrase);
+                    }
+                }).GetAwaiter().GetResult();
+
+                Debug.WriteLine("Response[" + data.Length + " bytes]: " + url);
+
+                if (data.Length > 0)
+                {
+                    ret = TileImageProxy.FromStream(data);
+
+                    if (ret != null)
+                    {
+                        ret.Data = data;
+                        ret.Data.Position = 0;
+                    }
+                    else
+                    {
+                        data.Dispose();
+                    }
+                }
+                data = null;
+            }
+            return ret;
+        }
+
+        protected string GetContentUsingHttp(string url)
+        {
+            string ret = string.Empty;
 
             HttpClient client = new HttpClient();
             if (!string.IsNullOrEmpty(UserAgent))
@@ -397,94 +452,10 @@ namespace GMap.NET.MapProviders
             if (!string.IsNullOrEmpty(RefererUrl))
                 client.DefaultRequestHeaders.Add("Referer", RefererUrl);
 
-            MemoryStream data =
-                Stuff.CopyStream(client.GetStreamAsync(url).ConfigureAwait(false).GetAwaiter().GetResult(), false);
-
-            Debug.WriteLine("Response[" + data.Length + " bytes]: " + url);
-
-            if (data.Length > 0)
+            ret = Task.Run(async () =>
             {
-                ret = TileImageProxy.FromStream(data);
-
-                if (ret != null)
-                {
-                    ret.Data = data;
-                    ret.Data.Position = 0;
-                }
-                else
-                {
-                    data.Dispose();
-                }
-            }
-            data = null;
-            return ret;
-        }
-
-        protected string GetContentUsingHttp(string url)
-        {
-            string ret = string.Empty;
-
-#if !PocketPC
-            WebRequest request = IsSocksProxy ? SocksHttpWebRequest.Create(url) : WebRequest.Create(url);
-#else
-            WebRequest request = WebRequest.Create(url);
-#endif
-
-            if (WebProxy != null)
-            {
-                request.Proxy = WebProxy;
-            }
-
-            if (Credential != null)
-            {
-                request.PreAuthenticate = true;
-                request.Credentials = Credential;
-            }
-
-            if (request is HttpWebRequest)
-            {
-                var r = request as HttpWebRequest;
-                r.UserAgent = UserAgent;
-                r.ReadWriteTimeout = TimeoutMs * 6;
-                r.Accept = requestAccept;
-                r.Referer = RefererUrl;
-                r.Timeout = TimeoutMs;
-            }
-#if !PocketPC
-            else if (request is SocksHttpWebRequest)
-            {
-                var r = request as SocksHttpWebRequest;
-
-                if (!string.IsNullOrEmpty(UserAgent))
-                {
-                    r.Headers.Add("User-Agent", UserAgent);
-                }
-
-                if (!string.IsNullOrEmpty(requestAccept))
-                {
-                    r.Headers.Add("Accept", requestAccept);
-                }
-
-                if (!string.IsNullOrEmpty(RefererUrl))
-                {
-                    r.Headers.Add("Referer", RefererUrl);
-                }
-            }
-#endif
-            using (var response = request.GetResponse())
-            {
-                using (Stream responseStream = response.GetResponseStream())
-                {
-                    using (StreamReader read = new StreamReader(responseStream, Encoding.UTF8))
-                    {
-                        ret = read.ReadToEnd();
-                    }
-                }
-#if PocketPC
-                request.Abort();
-#endif
-                response.Close();
-            }
+                return await client.GetStringAsync(url);
+            }).GetAwaiter().GetResult();
 
             return ret;
         }

@@ -1,11 +1,11 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
-using System.Windows.Media.Imaging;
 using Microsoft.VisualStudio.DebuggerVisualizers;
 using SkiaSharp;
 
@@ -21,34 +21,6 @@ namespace Aberus.VisualStudio.Debugger.ImageVisualizer
         {
             get
             {
-#if VS10
-                var dteProgID = "VisualStudio.DTE.10.0";
-#elif VS11
-                var dteProgID = "VisualStudio.DTE.11.0";
-#elif VS12
-                var dteProgID = "VisualStudio.DTE.12.0";
-#elif VS13
-                var dteProgID = "VisualStudio.DTE.13.0";
-#elif VS14
-                var dteProgID = "VisualStudio.DTE.14.0";
-#elif VS15
-                var dteProgID = "VisualStudio.DTE.15.0";
-#elif VS16
-                var dteProgID = "VisualStudio.DTE.16.0";
-#endif
-                var dte = (EnvDTE.DTE)Marshal.GetActiveObject(dteProgID);
-                var fontProperty = dte.Properties["FontsAndColors", "Dialogs and Tool Windows"];
-                if (fontProperty != null)
-                {
-                    object objValue = fontProperty.Item("FontFamily").Value;
-                    var fontFamily = objValue.ToString();
-                    objValue = fontProperty.Item("FontSize").Value;
-                    var fontSize = Convert.ToSingle(objValue);
-                    var font = new Font(fontFamily, fontSize);
-
-                    return font;
-                }
-
                 return System.Drawing.SystemFonts.DefaultFont;
             }
         }
@@ -74,47 +46,23 @@ namespace Aberus.VisualStudio.Debugger.ImageVisualizer
                 string expression = objectBitmap.ToString();
 #endif
 
+                Debug.WriteLine("ImageForm " + objectBitmap.ToString());
+
                 var method = objectBitmap.GetType().GetMethod("ToBitmap", new Type[] { });
                 if (method != null)
                 {
-                    objectBitmap = method.Invoke(objectBitmap, null);
-                }
-
-                BitmapSource bitmapSource = null;
-
-                if (objectBitmap is Bitmap)
-                {
-                    var hObject = ((Bitmap)objectBitmap).GetHbitmap();
-
-                    try
-                    {
-                        bitmapSource = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
-                               hObject,
-                               IntPtr.Zero,
-                               Int32Rect.Empty,
-                               BitmapSizeOptions.FromEmptyOptions());
-                    }
-                    catch (Win32Exception)
-                    {
-                        bitmapSource = null;
-                    }
-                    finally
-                    {
-                        DeleteObject(hObject);
-                    }
+                    pictureBox1.Image = (Bitmap)method.Invoke(objectBitmap, null);
                 }
                 else if (objectBitmap is SerializableBitmapImage serializableBitmapImage)
                 {
-                    bitmapSource = serializableBitmapImage;
+                    pictureBox1.Image = Image.FromStream(new MemoryStream((SerializableBitmapImage)objectBitmap));
                 }
-
-                if (bitmapSource != null)
-                {
-                    imageControl.SetImage(bitmapSource);
+                else {
+                    txtExpression.Text += "No image found";
                 }
             }
      
-            txtExpression.Text = objectProvider.GetObject().ToString();
+            txtExpression.Text += objectProvider.GetObject().ToString();
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)

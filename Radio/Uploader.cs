@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using MissionPlanner.Comms;
 
@@ -18,9 +19,14 @@ namespace MissionPlanner.Radio
             DEVICE_ID_RFD900 = 0X42,
             DEVICE_ID_RFD900A = 0X43,
 
+            DEVICE_ID_HB1060 = 0X50,
+
             DEVICE_ID_RFD900U = 0X80 | 0x01,
             DEVICE_ID_RFD900P = 0x80 | 0x02,
             DEVICE_ID_RFD900X = 0x80 | 0x03,
+            DEVICE_ID_RFD900X2 = 0x80 | 0x04,
+            DEVICE_ID_RFD900UX2 = 0x80 | 0x05,
+
             DEVICE_ID_RFD900UX = 0x80 | 0x08,
 
             FAILED = 0x11
@@ -384,8 +390,7 @@ namespace MissionPlanner.Radio
             log("Connected to board " + id + " freq " + freq);
 
             // XXX should be getting valid board/frequency data from firmware file
-            if ((id != Board.DEVICE_ID_HM_TRP) && (id != Board.DEVICE_ID_RF50) && (id != Board.DEVICE_ID_RFD900) &&
-                (id != Board.DEVICE_ID_RFD900A) && (id != Board.DEVICE_ID_RFD900P) && (id != Board.DEVICE_ID_RFD900U))
+            if (!Enum.IsDefined(typeof(Board), id))
                 throw new Exception("bootloader device ID mismatch - device:" + id);
 
             getSync();

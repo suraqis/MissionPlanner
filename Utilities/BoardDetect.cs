@@ -60,7 +60,7 @@ namespace MissionPlanner.Utilities
             var t = Type.GetType("Mono.Runtime");
             var MONO = (t != null);
 
-            SerialPort serialPort = new SerialPort();
+            ICommsSerial serialPort = new SerialPort();
             serialPort.PortName = port;
 
             if (!MONO)
@@ -128,23 +128,24 @@ namespace MissionPlanner.Utilities
                                 chbootloader = item.board.Replace("-bl", "").Replace("-Bl", "").Replace("-BL", "");
                                 return boards.chbootloader;
                             }
-
                             // old style bootloader
-
                             else if (item.board == "PX4 FMU v5.x")
                             {
                                 //USB\VID_26AC&PID_0032\0
                                 log.Info("is a PX4 FMU v5.x (fmuv5)");
                                 return boards.fmuv5;
                             }
-
                             else if (item.board == "PX4 FMU v4.x")
                             {
                                 log.Info("is a px4v4 pixracer");
                                 return boards.px4v4;
                             }
-
-                            else if (item.board == "PX4 FMU v2.x")
+                            else if (item.board == "PX4 FMU v1.x")
+                            {
+                                log.Info("is a px4v1");
+                                return boards.px4;
+                            }
+                            else if (item.board == "PX4 FMU v2.x" || item.board == "PX4 FMU v3.x")
                             {
                                 CustomMessageBox.Show(Strings.PleaseUnplugTheBoardAnd);
 
@@ -564,7 +565,7 @@ namespace MissionPlanner.Utilities
         /// <param name="serialPort"></param>
         /// <param name="message"></param>
         /// <returns></returns>
-        static byte[] genstkv2packet(SerialPort serialPort, byte[] message)
+        static byte[] genstkv2packet(ICommsSerial serialPort, byte[] message)
         {
             byte[] data = new byte[300];
             byte ck = 0;
@@ -608,7 +609,7 @@ namespace MissionPlanner.Utilities
         /// </summary>
         /// <param name="serialPort"></param>
         /// <returns></returns>
-        static byte[] readpacket(SerialPort serialPort)
+        static byte[] readpacket(ICommsSerial serialPort)
         {
             byte[] temp = new byte[4000];
             byte[] mes = new byte[2] { 0x0, 0xC0 }; // fail

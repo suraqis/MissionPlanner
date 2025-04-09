@@ -84,6 +84,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             BAR12.DataBindings.Clear();
             BAR13.DataBindings.Clear();
             BAR14.DataBindings.Clear();
+            BAR15.DataBindings.Clear();
+            BAR16.DataBindings.Clear();
 
             BARroll.DataBindings.Add(new Binding("Value", currentStateBindingSource, "ch" + chroll + "in", true));
             BARpitch.DataBindings.Add(new Binding("Value", currentStateBindingSource, "ch" + chpitch + "in", true));
@@ -101,6 +103,14 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             BAR12.DataBindings.Add(new Binding("Value", currentStateBindingSource, "ch12in", true));
             BAR13.DataBindings.Add(new Binding("Value", currentStateBindingSource, "ch13in", true));
             BAR14.DataBindings.Add(new Binding("Value", currentStateBindingSource, "ch14in", true));
+            BAR15.DataBindings.Add(new Binding("Value", currentStateBindingSource, "ch15in", true));
+            BAR16.DataBindings.Add(new Binding("Value", currentStateBindingSource, "ch16in", true));
+
+            //Add channel to pitch/roll/throttle/yaw bars labels
+            BARroll.Label = BARroll.Label + " (rc" + chroll.ToString() + ")";
+            BARpitch.Label = BARpitch.Label + " (rc" + chpitch.ToString() + ")";
+            BARthrottle.Label = BARthrottle.Label + " (rc" + chthro.ToString() + ")";
+            BARyaw.Label = BARyaw.Label + " (rc" + chyaw.ToString() + ")";
 
             try
             {
@@ -127,16 +137,16 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
 
             // this controls the direction of the output, not the input.
-            CHK_revch1.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC1_REV", "RC1_REVERSED" },
+            CHK_revroll.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC" + chroll + "_REV", "RC" + chroll + "_REVERSED" },
                 MainV2.comPort.MAV.param);
-            CHK_revch2.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC2_REV", "RC2_REVERSED" },
+            CHK_revpitch.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC" + chpitch + "_REV", "RC" + chpitch + "_REVERSED" },
                 MainV2.comPort.MAV.param);
-            CHK_revch3.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC3_REV", "RC3_REVERSED" },
+            CHK_revthr.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC" + chthro + "_REV", "RC" + chthro + "_REVERSED" },
                 MainV2.comPort.MAV.param);
-            CHK_revch4.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC4_REV", "RC4_REVERSED" },
+            CHK_revyaw.setup(new double[] { -1, 1 }, new double[] { 1, 0 }, new string[] { "RC" + chyaw + "_REV", "RC" + chyaw + "_REVERSED" },
                 MainV2.comPort.MAV.param);
 
-            if(MainV2.comPort.MAV.param["RC"+ chroll + "_REVERSED"]?.Value == 1)
+            if (MainV2.comPort.MAV.param["RC"+ chroll + "_REVERSED"]?.Value == 1)
             {
                 reverseChannel(true, BARroll);
             }
@@ -157,10 +167,10 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             // run after to ensure they are disabled on copter
             if (MainV2.comPort.MAV.cs.firmware == Firmwares.ArduCopter2)
             {
-                CHK_revch1.Visible = false;
-                CHK_revch2.Visible = false;
-                CHK_revch3.Visible = false;
-                CHK_revch4.Visible = false;
+                CHK_revroll.Visible = false;
+                CHK_revpitch.Visible = false;
+                CHK_revthr.Visible = false;
+                CHK_revyaw.Visible = false;
             }
 
             startup = false;
@@ -304,6 +314,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                     setBARStatus(BAR12, rcmin[11], rcmax[11]);
                     setBARStatus(BAR13, rcmin[12], rcmax[12]);
                     setBARStatus(BAR14, rcmin[13], rcmax[13]);
+                    setBARStatus(BAR15, rcmin[14], rcmax[14]);
+                    setBARStatus(BAR16, rcmin[15], rcmax[15]);
                 }
             }
 

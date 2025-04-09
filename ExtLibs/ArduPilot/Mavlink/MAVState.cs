@@ -3,16 +3,48 @@ using MissionPlanner.ArduPilot;
 using MissionPlanner.Utilities;
 using Newtonsoft.Json;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization;
+using MissionPlanner.ArduPilot.Mavlink;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("MissionPlanner")]
+[assembly: InternalsVisibleTo("MissionPlannerLib")]
 
 namespace MissionPlanner
 {
     public class MAVState : MAVLink, IDisposable
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+
+        public string ParamCachePath
+        {
+            get
+            {
+                try
+                {
+                    return Path.Combine(Settings.GetDataDirectory(), "paramcache",
+                        aptype.ToString(),
+                        cs.uid2,
+                        sysid.ToString(),
+                        compid.ToString(),
+                        "param.json");
+                }   
+                catch (Exception e)
+                {
+                    log.Error(e);
+                }
+
+                return "";
+            }
+        }
 
         [JsonIgnore]
         [IgnoreDataMember]
@@ -29,6 +61,38 @@ namespace MissionPlanner
             sendlinkid = (byte)(new Random().Next(256));
             signing = false;
             this.param = new MAVLinkParamList();
+            bool queuewrite = false;
+            this.param.PropertyChanged += (s, a) =>
+            {
+                lock (param)
+                {
+                    if (queuewrite == true)
+                        return;
+
+                    queuewrite = true;
+                }
+
+                new Timer((o) =>
+                {
+                    try
+                    {
+                        if (cs.uid2 == null || cs.uid2 == "" || sysid == 0)
+                            return;
+                        if (!Directory.Exists(Path.GetDirectoryName(ParamCachePath)))
+                            Directory.CreateDirectory(Path.GetDirectoryName(ParamCachePath));
+
+                        lock (this.param)
+                            File.WriteAllText(ParamCachePath, param.ToJSON());
+                    }
+                    catch (Exception e)
+                    {
+                        log.Error(e);
+                    }
+
+                    queuewrite = false;
+
+                }, null, 2000, -1);
+            };
             this.packets = new Dictionary<uint, Queue<MAVLinkMessage>>(byte.MaxValue);
             this.packetsLast = new Dictionary<uint, MAVLinkMessage>(byte.MaxValue);
             this.aptype = 0;
@@ -39,7 +103,7 @@ namespace MissionPlanner
             this.SerialString = "";
             this.FrameString = "";
             if (sysid != 255 && !(compid == 0 && sysid == 0)) // && !parent.logreadmode)
-                this.Proximity = new Proximity(this);
+                this.Proximity = new Proximity(this, sysid, compid);
 
             camerapoints.Clear();
 
@@ -69,7 +133,7 @@ namespace MissionPlanner
         /// </summary>
         public CurrentState cs = new CurrentState();
 
-        private byte _sysid;
+        private byte _sysid = 0;
         /// <summary>
         /// mavlink remote sysid
         /// </summary>
@@ -82,7 +146,7 @@ namespace MissionPlanner
         /// <summary>
         /// mavlink remove compid
         /// </summary>
-        public byte compid { get; set; }
+        public byte compid { get; set; } = 0;
 
         public byte linkid { get; set; }
 
@@ -112,10 +176,19 @@ namespace MissionPlanner
         /// </summary>
         [JsonIgnore]
         [IgnoreDataMember]
-        public MAVLinkParamList param { get; set; }
-        [JsonIgnore]
+        public MAVLinkParamList param
+        {
+            get;
+            private set;
+
+        }
+
+        /// <summary>
+        /// cache of all Types seen
+        /// </summary>
+        [JsonIgnore] 
         [IgnoreDataMember]
-        public Dictionary<string, MAV_PARAM_TYPE> param_types = new Dictionary<string, MAV_PARAM_TYPE>();
+        public ConcurrentDictionary<string, MAV_PARAM_TYPE> param_types = new ConcurrentDictionary<string, MAV_PARAM_TYPE>();
 
         /// <summary>
         /// storage of a previous packet recevied of a specific type
@@ -196,7 +269,7 @@ namespace MissionPlanner
         }
 
         /// <summary>
-        /// time seen of last mavlink packet
+        /// time seen of last mavlink packet UTC
         /// </summary>
         public DateTime lastvalidpacket { get; set; }
 
@@ -220,6 +293,8 @@ namespace MissionPlanner
         public MAV_TYPE aptype { get; set; }
 
         public MAV_AUTOPILOT apname { get; set; }
+
+        public bool isHighLatency { get; set; }
 
         public bool CANNode { get; set; } = false;
 
@@ -252,6 +327,11 @@ namespace MissionPlanner
 
         internal int recvpacketcount = 0;
         public Int64 time_offset_ns { get; set; }
+        public CameraProtocol Camera { get; set; }
+        
+        [Obsolete("Use GimbalManager instead")]
+        public GimbalProtocol Gimbal { get; set; }
+        public GimbalManagerProtocol GimbalManager { get; set; }
 
         public override string ToString()
         {

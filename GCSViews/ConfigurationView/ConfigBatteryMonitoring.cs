@@ -145,6 +145,21 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                     {
                         CMB_HWVersion.SelectedIndex = 6;
                     }
+                }         
+                else if (value == 14)
+                {
+                    // cubeorange
+                    CMB_HWVersion.SelectedIndex = 8;
+                }
+                else if (value == 16)
+                {
+                    // durandal
+                    CMB_HWVersion.SelectedIndex = 9;
+                }
+                 else if (value == 8)
+                {
+                    // Pixhawk 6C/Pix32 v6
+                    CMB_HWVersion.SelectedIndex = 10;
                 }
             }
             else
@@ -282,7 +297,11 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
             catch
             {
-                CustomMessageBox.Show("Set BATT_VOLT_MULT Failed", Strings.ERROR);
+                if (MainV2.comPort.MAV.param.ContainsKey("BATT_MONITOR") &&
+                    (MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 3 ||
+                     MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 4)) {
+                   CustomMessageBox.Show("Set BATT_VOLT_MULT Failed", Strings.ERROR);
+                }
             }
         }
 
@@ -302,7 +321,11 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
             catch
             {
-                CustomMessageBox.Show("Set BATT_VOLT_MULT Failed", Strings.ERROR);
+                if (MainV2.comPort.MAV.param.ContainsKey("BATT_MONITOR") &&
+                    (MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 3 ||
+                     MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 4)) {
+                  CustomMessageBox.Show("Set BATT_VOLT_MULT Failed", Strings.ERROR);
+                }
             }
         }
 
@@ -322,7 +345,11 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
             catch
             {
-                CustomMessageBox.Show("Set BATT_AMP_PERVOLT Failed", Strings.ERROR);
+                if (MainV2.comPort.MAV.param.ContainsKey("BATT_MONITOR") &&
+                    (MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 3 ||
+                     MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 4)) {
+                  CustomMessageBox.Show("Set BATT_AMP_PERVOLT Failed", Strings.ERROR);
+                }
             }
         }
 
@@ -458,7 +485,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             if (startup)
                 return;
 
-            var selection = int.Parse(CMB_HWVersion.Text.Substring(0, 1));
+            var selection = int.Parse(CMB_HWVersion.Text.Substring(0, 2).Replace(":", ""));
 
             try
             {
@@ -485,8 +512,6 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                     //px4
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_VOLT_PIN", 100);
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_CURR_PIN", 101);
-                    MainV2.comPort.setParam(new[] { "VOLT_DIVIDER", "BATT_VOLT_MULT" }, 1);
-                    TXT_divider_VOLT_MULT.Text = "1";
                 }
                 else if (selection == 4)
                 {
@@ -499,32 +524,36 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                     //vrbrain 5
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_VOLT_PIN", 10);
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_CURR_PIN", 11);
-                    MainV2.comPort.setParam(new[] { "VOLT_DIVIDER", "BATT_VOLT_MULT" }, 10);
-                    TXT_divider_VOLT_MULT.Text = "10";
                 }
                 else if (selection == 6)
                 {
                     //vr micro brain 5
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_VOLT_PIN", 10);
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_CURR_PIN", -1);
-                    MainV2.comPort.setParam(new[] { "VOLT_DIVIDER", "BATT_VOLT_MULT" }, 10);
-                    TXT_divider_VOLT_MULT.Text = "10";
                 }
                 else if (selection == 7)
                 {
                     //vr brain 4
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_VOLT_PIN", 6);
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_CURR_PIN", 7);
-                    MainV2.comPort.setParam(new[] { "VOLT_DIVIDER", "BATT_VOLT_MULT" }, 10);
-                    TXT_divider_VOLT_MULT.Text = "10";
                 }
                 else if (selection == 8)
                 {
                     //cube orange
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_VOLT_PIN", 14);
                     MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_CURR_PIN", 15);
-                    MainV2.comPort.setParam(new[] { "VOLT_DIVIDER", "BATT_VOLT_MULT" }, 10);
-                    TXT_divider_VOLT_MULT.Text = "10";
+                }
+                else if (selection == 9)
+                {
+                    //durandal
+                    MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_VOLT_PIN", 16);
+                    MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_CURR_PIN", 17);
+                }
+                else if (selection == 10)
+                {
+                    //Pixhawk 6C/Pix32 v6
+                    MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_VOLT_PIN", 8);
+                    MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "BATT_CURR_PIN", 4);
                 }
             }
             catch
@@ -615,7 +644,11 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
             catch
             {
-                CustomMessageBox.Show("Set BATT_AMP_PERVOLT Failed", Strings.ERROR);
+                if (MainV2.comPort.MAV.param.ContainsKey("BATT_MONITOR") &&
+                    (MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 3 ||
+                     MainV2.comPort.MAV.param["BATT_MONITOR"].Value == 4)) {
+                  CustomMessageBox.Show("Set BATT_AMP_PERVOLT Failed", Strings.ERROR);
+                }
             }
         }
     }

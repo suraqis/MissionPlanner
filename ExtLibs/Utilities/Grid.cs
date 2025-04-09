@@ -28,7 +28,7 @@ namespace MissionPlanner.Utilities
             TopLeft = 2,
             BottomRight = 3,
             TopRight = 4,
-            Point = 5
+            Point = 5,
         }
 
         public static PointLatLngAlt StartPointLatLngAlt = PointLatLngAlt.Zero;
@@ -187,13 +187,13 @@ namespace MissionPlanner.Utilities
             return ans;
         }
 
-        public static async Task<List<PointLatLngAlt>> CreateRotaryAsync(List<PointLatLngAlt> polygon, double altitude, double distance, double spacing, double angle, double overshoot1, double overshoot2, StartPosition startpos, bool shutter, float minLaneSeparation, float leadin, PointLatLngAlt HomeLocation)
+        public static async Task<List<PointLatLngAlt>> CreateRotaryAsync(List<PointLatLngAlt> polygon, double altitude, double distance, double spacing, double angle, double overshoot1, double overshoot2, StartPosition startpos, bool shutter, float minLaneSeparation, float leadin, PointLatLngAlt HomeLocation, int clockwise_laps, bool match_spiral_perimeter, int laps)
         {
             return await Task.Run((() => CreateRotary(polygon, altitude, distance, spacing, angle, overshoot1, overshoot2,
-                startpos, shutter, minLaneSeparation, leadin, HomeLocation))).ConfigureAwait(false);
+                startpos, shutter, minLaneSeparation, leadin, HomeLocation, clockwise_laps, match_spiral_perimeter, laps))).ConfigureAwait(false);
         }
 
-        public static List<PointLatLngAlt> CreateRotary(List<PointLatLngAlt> polygon, double altitude, double distance, double spacing, double angle, double overshoot1, double overshoot2, StartPosition startpos, bool shutter, float minLaneSeparation, float leadin, PointLatLngAlt HomeLocation)
+        public static List<PointLatLngAlt> CreateRotary(List<PointLatLngAlt> polygon, double altitude, double distance, double spacing, double angle, double overshoot1, double overshoot2, StartPosition startpos, bool shutter, float minLaneSeparation, float leadin, PointLatLngAlt HomeLocation, int clockwise_laps, bool match_spiral_perimeter, int laps)
         {
             spacing = 0;
 
@@ -211,11 +211,39 @@ namespace MissionPlanner.Utilities
             // utm position list
             List<utmpos> utmpositions = utmpos.ToList(PointLatLngAlt.ToUTM(utmzone, polygon), utmzone);
 
-            // close the loop if its not already
-            if (utmpositions[0] != utmpositions[utmpositions.Count - 1])
-                utmpositions.Add(utmpositions[0]); // make a full loop
+            // get mins/maxs of coverage area
+            Rect area = getPolyMinMax(utmpositions);
 
-            var maxlane = 200;// (Centroid(utmpositions).GetDistance(utmpositions[0]) / distance);
+            var maxlane = laps;// (Centroid(utmpositions).GetDistance(utmpositions[0]) / distance);
+
+            // pick start positon based on initial point rectangle
+            utmpos startposutm;
+
+            switch (startpos)
+            {
+                default:
+                case StartPosition.Home:
+                    startposutm = new utmpos(HomeLocation);
+                    break;
+                case StartPosition.BottomLeft:
+                    startposutm = new utmpos(area.Left, area.Bottom, utmzone);
+                    break;
+                case StartPosition.BottomRight:
+                    startposutm = new utmpos(area.Right, area.Bottom, utmzone);
+                    break;
+                case StartPosition.TopLeft:
+                    startposutm = new utmpos(area.Left, area.Top, utmzone);
+                    break;
+                case StartPosition.TopRight:
+                    startposutm = new utmpos(area.Right, area.Top, utmzone);
+                    break;
+                case StartPosition.Point:
+                    startposutm = new utmpos(StartPointLatLngAlt);
+                    break;
+            }
+
+            // find the closes polygon point based from our startpos selection
+            startposutm = findClosestPoint(startposutm, utmpositions);
 
             ClipperLib.ClipperOffset clipperOffset = new ClipperLib.ClipperOffset();
 
@@ -231,10 +259,38 @@ namespace MissionPlanner.Utilities
                 if (tree.ChildCount == 0)
                     break;
 
+                if (lane < clockwise_laps || clockwise_laps < 0)
+                {
+                    ClipperLib.Clipper.ReversePaths(ClipperLib.Clipper.PolyTreeToPaths(tree));
+                }
+
                 foreach (var treeChild in tree.Childs)
                 {
                     ans1 = treeChild.Contour.Select(a => new utmpos(a.X / 1000.0, a.Y / 1000.0, utmzone))
                         .ToList();
+                    // rotate points so the start point is close to the previous                    
+                    {
+                        startposutm = findClosestPoint(startposutm, ans1);
+
+                        var startidx = ans1.IndexOf(startposutm);
+
+                        var firsthalf = ans1.GetRange(startidx, ans1.Count - startidx);
+                        var secondhalf = ans1.GetRange(0, startidx);
+
+                        ans1 = firsthalf;
+                        ans1.AddRange(secondhalf);
+                    }
+                    if (lane == 0 && clockwise_laps != 1 && match_spiral_perimeter)
+                    {
+                        ans1.Insert(0, ans1.Last<utmpos>());   // start at the last point of the first calculated lap
+                                                               // to make a closed polygon on the first trip around
+                    }
+
+
+                    if (lane == clockwise_laps - 1)
+                    {
+                        ans1.Add(ans1.First<utmpos>());  // revisit the first waypoint on this lap to cleanly exit the CW pattern
+                    }
 
                     if (ans.Count() > 2)
                     {
@@ -270,13 +326,32 @@ namespace MissionPlanner.Utilities
 
         public static async Task<List<PointLatLngAlt>> CreateGridAsync(List<PointLatLngAlt> polygon, double altitude,
             double distance, double spacing, double angle, double overshoot1, double overshoot2, StartPosition startpos,
-            bool shutter, float minLaneSeparation, float leadin, PointLatLngAlt HomeLocation)
+            bool shutter, float minLaneSeparation, float leadin1,float leadin2, PointLatLngAlt HomeLocation, bool useextendedendpoint = true)
         {
             return await Task.Run((() => CreateGrid(polygon, altitude, distance, spacing, angle, overshoot1, overshoot2,
-                startpos, shutter, minLaneSeparation, leadin, HomeLocation))).ConfigureAwait(false);
+                    startpos, shutter, minLaneSeparation, leadin1, leadin2, HomeLocation, useextendedendpoint)))
+                .ConfigureAwait(false);
         }
 
-        public static List<PointLatLngAlt> CreateGrid(List<PointLatLngAlt> polygon, double altitude, double distance, double spacing, double angle, double overshoot1, double overshoot2, StartPosition startpos, bool shutter, float minLaneSeparation, float leadin, PointLatLngAlt HomeLocation)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="polygon">the polygon outside edge</param>
+        /// <param name="altitude">flight altitude</param>
+        /// <param name="distance">distance between lines</param>
+        /// <param name="spacing">space between triggers</param>
+        /// <param name="angle">angle of the lines</param>
+        /// <param name="overshoot1"></param>
+        /// <param name="overshoot2"></param>
+        /// <param name="startpos"></param>
+        /// <param name="shutter"></param>
+        /// <param name="minLaneSeparation"></param>
+        /// <param name="leadin1"></param>
+        /// <param name="leadin2"></param>
+        /// <param name="HomeLocation"></param>
+        /// <param name="useextendedendpoint">use the leadout point to find the next closes line</param>
+        /// <returns></returns>
+        public static List<PointLatLngAlt> CreateGrid(List<PointLatLngAlt> polygon, double altitude, double distance, double spacing, double angle, double overshoot1, double overshoot2, StartPosition startpos, bool shutter, float minLaneSeparation, float leadin1, float leadin2, PointLatLngAlt HomeLocation, bool useextendedendpoint = true)
         {
             //DoDebug();
 
@@ -534,12 +609,12 @@ namespace MissionPlanner.Utilities
                 // for each line, check which end of the line is the next closest
                 if (closest.p1.GetDistance(lastpnt) < closest.p2.GetDistance(lastpnt))
                 {
-                    utmpos newstart = newpos(closest.p1, angle, -leadin);
+                    utmpos newstart = newpos(closest.p1, angle, -leadin1);
                     newstart.Tag = "S";
                     addtomap(newstart, "S");
                     ans.Add(newstart);
 
-                    if (leadin < 0)
+                    if (leadin1 < 0)
                     {
                         var p2 = new utmpos(newstart) { Tag = "SM" };
                         addtomap(p2, "SM");
@@ -593,16 +668,19 @@ namespace MissionPlanner.Utilities
                     if (grid.Count == 0)
                         break;
 
-                    closest = findClosestLine(newend, grid, minLaneSeparationINMeters, angle);
+                    if(useextendedendpoint)
+                        closest = findClosestLine(newend, grid, minLaneSeparationINMeters, angle);
+                    else 
+                        closest = findClosestLine(closest.p2, grid, minLaneSeparationINMeters, angle);
                 }
                 else
                 {
-                    utmpos newstart = newpos(closest.p2, angle, leadin);
+                    utmpos newstart = newpos(closest.p2, angle, leadin2);
                     newstart.Tag = "S";
                     addtomap(newstart, "S");
                     ans.Add(newstart);
 
-                    if (leadin < 0)
+                    if (leadin2 < 0)
                     {
                         var p2 = new utmpos(newstart) { Tag = "SM" };
                         addtomap(p2, "SM");
@@ -655,7 +733,11 @@ namespace MissionPlanner.Utilities
                     grid.Remove(closest);
                     if (grid.Count == 0)
                         break;
-                    closest = findClosestLine(newend, grid, minLaneSeparationINMeters, angle);
+
+                    if(useextendedendpoint)
+                        closest = findClosestLine(newend, grid, minLaneSeparationINMeters, angle);
+                    else
+                        closest = findClosestLine(closest.p1, grid, minLaneSeparationINMeters, angle);
                 }
             }
 

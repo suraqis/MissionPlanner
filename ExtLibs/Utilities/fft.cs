@@ -117,7 +117,7 @@ namespace MissionPlanner.Utilities
         // max hz = 1/2 sample rate
 
         //https://gerrybeauregard.wordpress.com/2010/08/06/real-time-spectrum-analysis/
-        public double[] rin(double[] data, uint bins)
+        public double[] rin(Span<double> data, uint bins, bool outputLog = true)
         {
             double SCALE = 20/Math.Log(10);
             int N = data.Length;
@@ -153,8 +153,9 @@ namespace MissionPlanner.Utilities
                 double im = xIm[i]; // get the Imaginary FFT Number at position i
 
                 m_mag[i] = Math.Sqrt(re*re + im*im); // Convert magnitude to decibels
-
-                //m_mag[i] = SCALE * Math.Log(m_mag[i] + MIN_VALUE);
+                //m_angle[i] = Math.Atan(im/re);
+                if(outputLog)
+                    m_mag[i] = SCALE * Math.Log(m_mag[i] + double.Epsilon);
             }
 
 

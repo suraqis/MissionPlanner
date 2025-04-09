@@ -6,11 +6,18 @@ using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace MissionPlanner.Utilities
 {
     public static class ParameterMetaDataRepository
     {
+        private static MemoryCache _cache =
+            new MemoryCache(new MemoryCacheOptions()
+            {
+                /*SizeLimit = 1024 * 1024 * 500*/
+            });
+
         /// <summary>
         /// Gets the parameter meta data.
         /// </summary>
@@ -19,14 +26,45 @@ namespace MissionPlanner.Utilities
         /// <returns></returns>
         public static string GetParameterMetaData(string nodeKey, string metaKey, string vechileType)
         {
+            lock (_cache)
+            {
+                var ans = _cache.Get(nodeKey + metaKey + vechileType) as string;
+                if (ans != null)
+                    return ans;
+            }
+
             if (vechileType == "PX4")
             {
                 return ParameterMetaDataRepositoryPX4.GetParameterMetaData(nodeKey, metaKey, vechileType);
             }
             else
             {
-                //return ParameterMetaDataRepositoryAPMpdef.GetParameterMetaData(nodeKey, metaKey, vechileType);
-                return ParameterMetaDataRepositoryAPM.GetParameterMetaData(nodeKey, metaKey, vechileType);
+                var answer = ParameterMetaDataRepositoryAPMpdef.GetParameterMetaData(nodeKey, metaKey, vechileType);
+                if (answer == string.Empty)
+                    answer = ParameterMetaDataRepositoryAPMpdef.GetParameterMetaData(nodeKey, metaKey, "SITL");
+                if (answer == string.Empty)
+                    answer = ParameterMetaDataRepositoryAPMpdef.GetParameterMetaData(nodeKey, metaKey, "AP_Periph");
+                // add fallback
+                if (answer == string.Empty)
+                    answer = ParameterMetaDataRepositoryAPM.GetParameterMetaData(nodeKey, metaKey, vechileType);
+
+                if (answer == string.Empty)
+                    return String.Empty;
+
+                lock (_cache)
+                {
+                    try
+                    {
+                        var ci = _cache.CreateEntry(nodeKey + metaKey + vechileType);
+                        ci.Value = answer;
+                        ci.Size = ((string)ci.Value).Length;
+                        // evict after no access
+                        ci.SlidingExpiration = TimeSpan.FromMinutes(5);
+                        ci.Dispose();
+                    } catch { }
+                }
+
+                return answer;
             }
         }
 
@@ -104,11 +142,11 @@ namespace MissionPlanner.Utilities
             string[] rangeParts = rangeRaw.Split(new[] {' '});
             if (rangeParts.Count() == 2)
             {
-                float lowerRange;
-                if (float.TryParse(rangeParts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out lowerRange))
+                double lowerRange;
+                if (double.TryParse(rangeParts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out lowerRange))
                 {
-                    float upperRange;
-                    if (float.TryParse(rangeParts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out upperRange))
+                    double upperRange;
+                    if (double.TryParse(rangeParts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out upperRange))
                     {
                         min = lowerRange;
                         max = upperRange;

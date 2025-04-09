@@ -1,19 +1,21 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <TargetFrameworks>net461;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net472;netstandard2.0</TargetFrameworks>
     <UseWindowsForms>true</UseWindowsForms>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo><GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="log4net" Version="2.0.8" />
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.0">
+    <PackageReference Include="log4net" Version="2.0.13" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="OpenTK.GLControl" Version="3.1.0" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
-    <PackageReference Include="SkiaSharp" Version="1.68.1.1" />
-    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="1.68.1.1" />
+    <PackageReference Include="SkiaSharp" Version="2.80.2" />
+    <PackageReference Include="SkiaSharp.Views.Desktop.Common" Version="2.80.2" />
     <PackageReference Include="System.Drawing.Primitives" Version="4.3.0" />
 
   </ItemGroup>
@@ -31,18 +33,22 @@
     <ProjectReference Include="..\Utilities\MissionPlanner.Utilities.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="OpenTK-1.0" Condition="'$(TargetFramework)' == 'netstandard2.0'">
-      <HintPath>..\OpenTK-1.0.dll</HintPath>
-    </Reference>    
+    <Compile Remove="netstandard2.0\Shim.cs" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="netstandard2.0\Shim.cs" Condition="'$(TargetFramework)' != 'netstandard2.0'" />
+
   </ItemGroup>
   <ItemGroup>
     <Compile Update="HUDT.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
       <DependentUpon>HUDT.resx</DependentUpon>
+    </Compile>
+    <Compile Update="ClickBindingButton.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="KeyBindingButton.cs">
+      <SubType>Component</SubType>
     </Compile>
     <Compile Update="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
@@ -61,5 +67,10 @@
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
       <CustomToolNamespace>MissionPlanner.Controls.Properties</CustomToolNamespace>
     </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Update="System.IO.Compression.FileSystem">
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 </Project>

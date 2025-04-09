@@ -1,6 +1,7 @@
 ﻿using Microsoft.Scripting.Utils;
 using MissionPlanner.Utilities;
 using System;
+using System.Collections;
 using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
@@ -81,7 +82,7 @@ namespace MissionPlanner.Controls
                 var compidnodes = sysidnode.Nodes.Find(mavLinkMessage.compid.ToString(), false);
                 if (compidnodes.Length == 0)
                 {
-                    compidnode = new TreeNode("Comp " + mavLinkMessage.compid)
+                    compidnode = new TreeNode("Comp " + mavLinkMessage.compid + " " + (MAVLink.MAV_COMPONENT) mavLinkMessage.compid)
                     {
                         Name = mavLinkMessage.compid.ToString()
                     };
@@ -107,7 +108,7 @@ namespace MissionPlanner.Controls
                 var msgidheader = mavLinkMessage.msgtypename + " (" +
                                   (mavi.SeenRate(mavLinkMessage.sysid, mavLinkMessage.compid, mavLinkMessage.msgid))
                                   .ToString("0.0 Hz") + ", #" + mavLinkMessage.msgid + ") " +
-                                  mavi.SeenBps(mavLinkMessage.sysid, mavLinkMessage.compid, mavLinkMessage.msgid).ToString("0bps");
+                                  mavi.SeenBps(mavLinkMessage.sysid, mavLinkMessage.compid, mavLinkMessage.msgid).ToString("0Bps");
 
                 if (msgidnode.Text != msgidheader)
                     msgidnode.Text = msgidheader;
@@ -316,7 +317,7 @@ namespace MissionPlanner.Controls
             }
         }
 
-        private (string msgid, string name) selectedmsgid;
+        private string selectedmsgid;
 
         private void treeView1_AfterSelect(object sender, TreeViewEventArgs e)
         {
@@ -326,7 +327,7 @@ namespace MissionPlanner.Controls
             int throwaway = 0;
             if (int.TryParse(e.Node.Parent.Name, out throwaway))
             {
-                selectedmsgid = (e.Node.Parent.Name, e.Node.Name);
+                selectedmsgid = e.Node.FullPath;
                 but_graphit.Enabled = true;
             }
             else
@@ -342,9 +343,19 @@ namespace MissionPlanner.Controls
             InputBox.Show("Points", "Points of history?", ref history);
             var form = new Form() { Size = new Size(640, 480) };
             var zg1 = new ZedGraphControl() { Dock = DockStyle.Fill };
-            var msgid = int.Parse(selectedmsgid.msgid);
-            var msgidfield = selectedmsgid.name;
-            var line = new LineItem(msgidfield, new RollingPointPairList(history), Color.Red, SymbolType.None);
+            var path = selectedmsgid.Split('\\');
+            if(path.Length < 4)
+                return;
+
+            var sysid = int.Parse(path[0].Split(' ')[1]);
+            var compid = int.Parse(path[1].Split(' ')[1]);
+            var msgt = path[2];
+            var field = path[3];
+
+            var msgid = int.Parse(msgt.Split(new[] {'#', ')'})[1]);
+            var msgidfield = field.Split(' ')[0];
+
+            var line = new LineItem(msgt.Split(' ')[0] + "." + msgidfield, new RollingPointPairList(history), Color.Red, SymbolType.None);
             zg1.GraphPane.Title.Text = "";
             try
             {
@@ -367,15 +378,55 @@ namespace MissionPlanner.Controls
             zg1.GraphPane.XAxis.Scale.MajorUnit = DateUnit.Minute;
             zg1.GraphPane.XAxis.Scale.MinorUnit = DateUnit.Second;
 
+            Color[] color = new Color[]
+                {Color.Red, Color.Green, Color.Blue, Color.Black, Color.Violet, Color.Orange};
             var timer = new Timer() { Interval = 100 };
-            var subscribeToPacket =
-                mav.SubscribeToPacketType((MAVLink.MAVLINK_MSG_ID)msgid,
-                    message =>
+
+            EventHandler<MAVLink.MAVLinkMessage> opr = null;
+            opr = (e2, msg) =>
+            {
+                if(msg.msgid != msgid)
+                    return;
+                if(msg.sysid != sysid)
+                    return;
+                if(msg.compid != compid)
+                    return;
+
+                var item = msg.data.GetPropertyOrField(msgidfield);
+                if (item is IEnumerable)
+                {
+                    int a = 0;
+                    foreach (var subitem in (IEnumerable) item)
                     {
-                        line.AddPoint(new XDate(message.rxtime),
-                            (double)(dynamic)message.data.GetPropertyOrField(msgidfield));
-                        return true;
-                    });
+                        if (subitem is IConvertible)
+                        {
+                            while (zg1.GraphPane.CurveList.Count < (a + 1))
+                            {
+                                zg1.GraphPane.CurveList.Add(new LineItem(msgidfield + "[" + a + "]",
+                                    new RollingPointPairList(history), color[a % color.Length], SymbolType.None));
+                            }
+
+                            zg1.GraphPane.CurveList[a].AddPoint(new XDate(msg.rxtime),
+                                ((IConvertible) subitem).ToDouble(null));
+                            a++;
+                        }
+                    }
+                }
+                else if (item is IConvertible)
+                {
+                    line.AddPoint(new XDate(msg.rxtime),
+                        ((IConvertible) item).ToDouble(null));
+                }
+                else
+                {
+                    line.AddPoint(new XDate(msg.rxtime),
+                        (double) (dynamic) item);
+                }
+            };
+
+            mav.OnPacketReceived += opr;
+            mav.OnPacketSent += opr;
+
             timer.Tick += (o, args) =>
             {
                 // Make sure the Y axis is rescaled to accommodate actual data
@@ -387,7 +438,7 @@ namespace MissionPlanner.Controls
 
             };
             form.Controls.Add(zg1);
-            form.Closing += (o2, args2) => { mav.UnSubscribeToPacketType(subscribeToPacket); };
+            form.Closing += (o2, args2) => { mav.OnPacketReceived -= opr; mav.OnPacketSent -= opr; };
             ThemeManager.ApplyThemeTo(form);
             form.Show(this);
             timer.Start();

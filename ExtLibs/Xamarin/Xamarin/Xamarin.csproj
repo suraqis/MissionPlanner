@@ -21,9 +21,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Forms\**" />
+    <Compile Remove="GMap.NET.WindowsForms\**" />
+    <EmbeddedResource Remove="Forms\**" />
+    <EmbeddedResource Remove="GMap.NET.WindowsForms\**" />
+    <None Remove="Forms\**" />
+    <None Remove="GMap.NET.WindowsForms\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="Controls\Cursors.cs" />
     <Compile Remove="Controls\MouseEventArgs.cs" />
     <Compile Remove="Controls\PaintEventArgs.cs" />
+    <Compile Remove="GCSViews\FlightData.xaml.cs" />
     <Compile Remove="Linked\Control.cs" />
     <Compile Remove="Linked\MainV2.cs" />
     <Compile Remove="Linked\UserControl.cs" />
@@ -31,7 +41,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\Common.cs" Link="GCSViews\Common.cs" />
+    <EmbeddedResource Remove="GCSViews\FlightData.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="..\..\..\Controls\MavlinkCheckBox.cs" Link="GCSViews\MavlinkCheckBox.cs" />
     <Compile Include="..\..\..\Controls\MavlinkCheckBoxBitMask.cs" Link="GCSViews\MavlinkCheckBoxBitMask.cs" />
     <Compile Include="..\..\..\Controls\MavlinkComboBox.cs" Link="GCSViews\MavlinkComboBox.cs" />
@@ -54,6 +67,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="NLog" Version="4.7.4" />
     <PackageReference Include="SkiaSharp.Views.Forms" Version="2.80.2" />
     <PackageReference Include="System.Drawing.Primitives" Version="4.3.0" />
@@ -62,7 +76,7 @@
     <PackageReference Include="System.Linq.Parallel" Version="4.3.0" />
     <PackageReference Include="System.Linq.Queryable" Version="4.3.0" />
     <PackageReference Include="Xam.Plugin.TabView" Version="1.1.1" />
-    <PackageReference Include="Xamarin.Essentials" Version="1.5.3.2" />
+    <PackageReference Include="Xamarin.Essentials" Version="1.6.1" />
     <PackageReference Include="Xamarin.Forms.DataGrid" Version="3.1.0" />
     <PackageReference Include="Xamarin.Plugin.FilePicker" Version="2.1.41" />
   </ItemGroup>
@@ -97,6 +111,15 @@
     <None Include="Linked\Control.cs" />
     <None Include="Linked\MainV2.cs" />
     <None Include="Linked\UserControl.cs" />
+    <None Include="Resources\example10-canlogfile.cs" />
+    <None Include="Resources\example11-trace.cs" />
+    <None Include="Resources\example3-fencedist.cs" />
+    <None Include="Resources\example4-herelink.cs" />
+    <None Include="Resources\example5-latencytracker.cs" />
+    <None Include="Resources\example6-mapicondesc.cs" />
+    <None Include="Resources\example7-canrtcm.cs" />
+    <None Include="Resources\example8-modechange.cs" />
+    <None Include="Resources\example9-hudonoff.cs" />
     <None Include="RTSP\Properties\AssemblyInfo.cs" />
   </ItemGroup>
 
@@ -107,7 +130,6 @@
     <ProjectReference Include="..\..\7zip\7zip.csproj" />
     <ProjectReference Include="..\..\alglibnet\alglibnet.csproj" />
     <ProjectReference Include="..\..\ArduPilot\MissionPlanner.ArduPilot.csproj" />
-    <ProjectReference Include="..\..\BouncyCastle\BouncyCastle.csproj" />
     <ProjectReference Include="..\..\Comms\MissionPlanner.Comms.csproj" />
     <ProjectReference Include="..\..\GeoUtility\GeoUtility.csproj" />
     <ProjectReference Include="..\..\GMap.NET.Core\GMap.NET.Core.csproj" />
@@ -126,14 +148,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="OpenTK-1.0">
-      <HintPath>..\..\OpenTK-1.0.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-
-  <ItemGroup>
     <Compile Update="Controls\AGauge.cs" />
-    <Compile Update="GMap.NET.WindowsForms\GMapControl.cs" />
+    <Compile Update="files.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>files.resx</DependentUpon>
+    </Compile>
     <Compile Update="Controls\HUD.cs" />
     <Compile Update="Controls\HUDT.Designer.cs">
       <DesignTime>True</DesignTime>
@@ -147,10 +167,10 @@
       <DependentUpon>MainPage</DependentUpon>
     </Compile>
     <Compile Update="MasterDetailPage1MenuItem.cs" />
-    <Compile Update="Properties\Resources.Designer.cs">
+    <Compile Update="Properties\ResourcesX.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
+      <DependentUpon>ResourcesX.resx</DependentUpon>
     </Compile>
   </ItemGroup>
 
@@ -162,6 +182,10 @@
       <Generator>PublicResXFileCodeGenerator</Generator>
       <LastGenOutput>HUDT.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <EmbeddedResource Update="files.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>files.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
    
     <EmbeddedResource Update="GCSViews\WinForms.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
@@ -172,9 +196,9 @@
     <EmbeddedResource Update="MasterDetailPage1Master.xaml">
       <Generator>MSBuild:UpdateDesignTimeXaml</Generator>
     </EmbeddedResource>
-    <EmbeddedResource Update="Properties\Resources.resx">
+    <EmbeddedResource Update="Properties\ResourcesX.resx">
       <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+      <LastGenOutput>ResourcesX.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
 

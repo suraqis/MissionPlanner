@@ -1,10 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-
+using System.Threading;
 
 /// <summary>
 /// Static methods and helpers for creation and manipulation of Mavlink packets
@@ -60,6 +61,12 @@ public static class MavlinkUtil
                 Marshal.WriteByte(iptr, i, 0x00);
             }
 
+            if (payloadlength > len)
+            {
+                // unknown mavlink extension...
+                payloadlength = len;
+            }
+
             // copy byte array to ptr
             Marshal.Copy(bytearray, startoffset, iptr, payloadlength);
 
@@ -71,7 +78,7 @@ public static class MavlinkUtil
                 Marshal.FreeHGlobal(iptr);
         }
     }
-
+    
     public static TMavlinkPacket ByteArrayToStructureT<TMavlinkPacket>(byte[] bytearray, int startoffset)
     {
         if (bytearray == null || bytearray.Length < startoffset)
@@ -111,7 +118,7 @@ public static class MavlinkUtil
     }
     public static T ReadUsingPointer<T>(byte[] data, int startoffset) where T : struct
     {
-        if (data == null || data.Length < (startoffset))
+        if (data == null || data.Length < (startoffset) || (data.Length - startoffset) < Marshal.SizeOf(typeof(T)))
             return default(T);
         unsafe
         {
@@ -132,6 +139,71 @@ public static class MavlinkUtil
         finally
         {
             gch.Free();
+        }
+    }
+
+    static MavlinkUtil()
+    {
+        var no = 4;
+
+        handle = new GCHandle[no];
+        gcbuffer = new byte[no][];
+        semaphore = new SemaphoreSlim(no);
+        freebuffers = new ConcurrentStack<int>();
+
+        for (int a = 0; a < no; a++) {
+            gcbuffer[a] = new byte[4096];
+            handle[a] = GCHandle.Alloc(gcbuffer[a], GCHandleType.Pinned);           
+            freebuffers.Push(a);
+        }            
+    }
+
+    static readonly byte[][] gcbuffer;
+    static readonly GCHandle[] handle;
+    static readonly SemaphoreSlim semaphore;
+    static readonly ConcurrentStack<int> freebuffers;
+
+    public static object ByteArrayToStructureGC(byte[] bytearray, Type typeinfoType, byte startoffset, byte payloadlength)
+    {
+        semaphore.Wait();
+        int bufferindex = 0;
+        if (freebuffers.TryPop(out bufferindex)) { 
+            try {           
+                // copy it
+                var len = Marshal.SizeOf(typeinfoType);
+                if (len - payloadlength > 0)
+                    Array.Clear(gcbuffer[bufferindex], payloadlength, len - payloadlength);
+                Buffer.BlockCopy(bytearray, startoffset, gcbuffer[bufferindex], 0, payloadlength);
+                    // structure it
+                return Marshal.PtrToStructure(handle[bufferindex].AddrOfPinnedObject(), typeinfoType);
+            }
+            finally
+            {
+                freebuffers.Push(bufferindex);
+                semaphore.Release();
+            }
+        }
+
+        semaphore.Release();
+
+        throw new InvalidOperationException("Failed to get free buffer");
+    }
+
+    public static object ByteArrayToStructureGCArray(byte[] bytearray, Type typeinfoType, byte startoffset, byte payloadlength)
+    {
+        // copy it
+        var data = new byte[Marshal.SizeOf(typeinfoType)];
+        Array.Copy(bytearray, startoffset, data, 0, payloadlength);
+        // pin it
+        GCHandle handle = GCHandle.Alloc(data, GCHandleType.Pinned);
+        try
+        {
+            // structure it
+            return Marshal.PtrToStructure(handle.AddrOfPinnedObject(), typeinfoType);
+        }
+        finally
+        {
+            handle.Free();
         }
     }
 

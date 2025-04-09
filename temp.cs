@@ -1,12 +1,10 @@
-﻿using DotSpatial.Data;
-using DotSpatial.Projections;
-using DotSpatial.Symbology;
+﻿using DotSpatial.Projections;
 using GMap.NET;
 using GMap.NET.MapProviders;
 using GMap.NET.WindowsForms;
 using log4net;
-using Microsoft.Scripting.Utils;
 using MissionPlanner.ArduPilot;
+using MissionPlanner.ArduPilot.Mavlink;
 using MissionPlanner.Comms;
 using MissionPlanner.Controls;
 using MissionPlanner.GCSViews;
@@ -31,6 +29,8 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -38,7 +38,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml;
 using System.Xml.Serialization;
-using MissionPlanner.ArduPilot.Mavlink;
+using DotSpatial.Data;
+using Microsoft.Scripting.Utils;
 using static MissionPlanner.Utilities.Firmware;
 using Formatting = Newtonsoft.Json.Formatting;
 using ILog = log4net.ILog;
@@ -135,7 +136,7 @@ namespace MissionPlanner
 
                     Application.DoEvents();
 
-                    GMaps.Instance.PrimaryCache.PutImageToCache(tile.GetBuffer(), Custom.Instance.DbId, pnt,
+                    GMaps.Instance.PrimaryCache.PutImageToCache(tile.ToArray(), Custom.Instance.DbId, pnt,
                         int.Parse(mat.Groups[1].Value));
 
                     // Application.DoEvents();
@@ -466,7 +467,7 @@ namespace MissionPlanner
                         var sb = new StringBuilder();
 
                         sb.Append("#Shap to Poly - Mission Planner\r\n");
-                        foreach (var point in feature.Coordinates)
+                        foreach (var point in feature.Geometry.Coordinates)
                         {
                             if (reproject)
                             {
@@ -503,6 +504,28 @@ namespace MissionPlanner
                 CustomMessageBox.Show(Strings.PleaseConnect, Strings.ERROR);
         }
 
+        private string[] GetFiles(string path, string pattern)
+        {
+            var files = new List<string>();
+            var directories = new string[] { };
+
+            try
+            {
+                files.AddRange(Directory.GetFiles(path, pattern, SearchOption.TopDirectoryOnly));
+                directories = Directory.GetDirectories(path);
+            }
+            catch (UnauthorizedAccessException) { }
+
+            foreach (var directory in directories)
+                try
+                {
+                    files.AddRange(GetFiles(directory, pattern));
+                }
+                catch (UnauthorizedAccessException) { }
+
+            return files.ToArray();
+        }
+
         private void but_maplogs_Click(object sender, EventArgs e)
         {
             var fbd = new FolderBrowserDialog();
@@ -510,9 +533,9 @@ namespace MissionPlanner
 
             if (fbd.ShowDialog() == DialogResult.OK)
             {
-                LogMap.MapLogs(Directory.GetFiles(fbd.SelectedPath, "*.tlog", SearchOption.AllDirectories));
-                LogMap.MapLogs(Directory.GetFiles(fbd.SelectedPath, "*.bin", SearchOption.AllDirectories));
-                LogMap.MapLogs(Directory.GetFiles(fbd.SelectedPath, "*.log", SearchOption.AllDirectories));
+                LogMap.MapLogs(GetFiles(fbd.SelectedPath, "*.tlog"));
+                LogMap.MapLogs(GetFiles(fbd.SelectedPath, "*.bin"));
+                LogMap.MapLogs(GetFiles(fbd.SelectedPath, "*.log"));
             }
         }
 
@@ -541,7 +564,7 @@ namespace MissionPlanner
             for (a = 0; a < 1000000; a++)
             {
                 var obj = (object)new MAVLink.mavlink_heartbeat_t();
-                MavlinkUtil.ByteArrayToStructure(array, ref obj, 6);
+                MavlinkUtil.ByteArrayToStructure(array, ref obj, 6, 5);
             }
             end = DateTime.Now;
             Console.WriteLine("ByteArrayToStructure " + (end - start).TotalMilliseconds);
@@ -566,7 +589,26 @@ namespace MissionPlanner
                 var ans3 = MavlinkUtil.ByteArrayToStructureGC<MAVLink.mavlink_heartbeat_t>(array, 6);
             }
             end = DateTime.Now;
+            Console.WriteLine("ByteArrayToStructureGC<T> " + (end - start).TotalMilliseconds);
+
+            start = DateTime.Now;
+            for (a = 0; a < 1000000; a++)
+            {
+                var ans4 = MavlinkUtil.ByteArrayToStructureGC(array, typeof(MAVLink.mavlink_heartbeat_t), 6, 5);
+            }
+            end = DateTime.Now;
             Console.WriteLine("ByteArrayToStructureGC " + (end - start).TotalMilliseconds);
+
+            start = DateTime.Now;
+            for (a = 0; a < 1000000; a++)
+            {
+                var ans4 = MavlinkUtil.ByteArrayToStructureGCArray(array, typeof(MAVLink.mavlink_heartbeat_t), 6, 5);
+            }
+            end = DateTime.Now;
+            Console.WriteLine("ByteArrayToStructureGCArray " + (end - start).TotalMilliseconds);
+
+
+            
         }
 
         private void but_armandtakeoff_Click(object sender, EventArgs e)
@@ -625,14 +667,17 @@ namespace MissionPlanner
 
         private void BUT_QNH_Click(object sender, EventArgs e)
         {
-            var currentQNH = MainV2.comPort.GetParam("GND_ABS_PRESS").ToString();
+            var paramname = MainV2.comPort.MAV.param.ContainsKey("GND_ABS_PRESS") ? "GND_ABS_PRESS" : "BARO1_GND_PRESS";
+
+            var currentQNH = MainV2.comPort.GetParam(paramname).ToString();
 
             if (InputBox.Show("QNH", "Enter the QNH in pascals (103040 = 1030.4 hPa)", ref currentQNH) ==
                 DialogResult.OK)
             {
                 var newQNH = double.Parse(currentQNH);
 
-                MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "GND_ABS_PRESS", newQNH);
+                MainV2.comPort.setParam((byte) MainV2.comPort.sysidcurrent, (byte) MainV2.comPort.compidcurrent,
+                    paramname, newQNH);
             }
         }
 
@@ -674,101 +719,18 @@ namespace MissionPlanner
 
         private void myButton1_Click_2(object sender, EventArgs e)
         {
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduCopter-2.8.1/ArduCopter/Parameters.pde"
-                , "ArduCopter2.8.1.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduCopter-2.9.1/ArduCopter/Parameters.pde"
-                , "ArduCopter2.9.1.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduCopter-3.0/ArduCopter/Parameters.pde"
-                , "ArduCopter3.0.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduCopter-3.1.5/ArduCopter/Parameters.pde"
-                , "ArduCopter3.1.5.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduCopter-3.2.1/ArduCopter/Parameters.pde"
-                , "ArduCopter3.2.1.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/Copter-3.3.2/ArduCopter/Parameters.cpp"
-                , "ArduCopter3.3.2.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/Copter-3.3/ArduCopter/Parameters.cpp"
-                , "ArduCopter3.3.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/Copter-3.4/ArduCopter/Parameters.cpp"
-                , "ArduCopter3.4.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/Copter-3.4.6/ArduCopter/Parameters.cpp"
-                , "ArduCopter3.4.6.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/Copter-3.5.0/ArduCopter/Parameters.cpp"
-                , "ArduCopter3.5.0.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/Copter-3.5.2/ArduCopter/Parameters.cpp"
-                , "ArduCopter3.5.2.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/Copter-3.5.4/ArduCopter/Parameters.cpp"
-                , "ArduCopter3.5.4.xml");
-
-
-
-            // plane
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.8.3/ArduPlane/Parameters.cpp"
-                , "ArduPlane3.8.3.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.7.1/ArduPlane/Parameters.cpp"
-                , "ArduPlane3.7.1.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.7.0/ArduPlane/Parameters.cpp"
-                , "ArduPlane3.7.0.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.6.0/ArduPlane/Parameters.cpp"
-                , "ArduPlane3.6.0.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.5.2/ArduPlane/Parameters.cpp"
-                , "ArduPlane3.5.2.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.3.0/ArduPlane/Parameters.pde"
-                , "ArduPlane3.3.0.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.2.2/ArduPlane/Parameters.pde"
-                , "ArduPlane3.2.2.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.1.0/ArduPlane/Parameters.pde"
-                , "ArduPlane3.1.0.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-3.0.3/ArduPlane/Parameters.pde"
-                , "ArduPlane3.0.3.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-2.78b/ArduPlane/Parameters.pde"
-                , "ArduPlane2.78b.xml");
-
-            ParameterMetaDataParser.GetParameterInformation(
-                "https://raw.githubusercontent.com/ArduPilot/ardupilot/ArduPlane-2.75/ArduPlane/Parameters.pde"
-                , "ArduPlane2.75.xml");
+            
+            OpenFileDialog openFileDialog1 = new OpenFileDialog();
+            openFileDialog1.Filter = "Log Files|*.log;*.bin;*.BIN;*.LOG";
+            openFileDialog1.FilterIndex = 2;
+            openFileDialog1.Multiselect = true;
+            openFileDialog1.InitialDirectory =  Settings.Instance.LogDir;
+            if (openFileDialog1.ShowDialog() == DialogResult.OK)
+            {
+                int a = 10;
+                InputBox.Show("How Many", "Enter how many pieces to split into", ref a);
+                new DFLogBuffer(openFileDialog1.FileName).SplitLog(a);
+            }            
         }
 
         private void but_signkey_Click(object sender, EventArgs e)
@@ -788,7 +750,7 @@ namespace MissionPlanner
 
             test.Show();
 
-            var flow = new OpticalFlow(MainV2.comPort);
+            var flow = new OpticalFlow(MainV2.comPort, (byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent);
 
             // disable on close form
             test.Closed += (o, args) =>
@@ -802,19 +764,6 @@ namespace MissionPlanner
 
             // setup bitmap to screen
             flow.newImage += (s, eh) => imagebox.Image = (Image)eh.Image.Clone();
-        }
-
-        private void myButton2_Click(object sender, EventArgs e)
-        {
-            var sp = new Sphere();
-
-            sp.Dock = DockStyle.Fill;
-
-            var frm = new Form();
-
-            frm.Controls.Add(sp);
-
-            frm.Show();
         }
 
         private async void but_gpsinj_Click(object sender, EventArgs e)
@@ -892,8 +841,8 @@ namespace MissionPlanner
                 if (Directory.Exists(fbd.SelectedPath))
                 {
                     Settings.Instance["GDALImageDir"] = fbd.SelectedPath;
-                    GDAL.GDAL.OnProgress += GDAL_OnProgress;
-                    GDAL.GDAL.ScanDirectory(fbd.SelectedPath);
+                    Utilities.GDAL.OnProgress += GDAL_OnProgress;
+                    Utilities.GDAL.ScanDirectory(fbd.SelectedPath);
                     DTED.OnProgress += GDAL_OnProgress;
                     DTED.AddCustomDirectory(fbd.SelectedPath);
 
@@ -934,30 +883,41 @@ namespace MissionPlanner
                         (byte) MainV2.comPort.compidcurrent);
                     var st = mavftp.GetFile(path, new CancellationTokenSource(5000), true);
                     var output = Path.Combine(Settings.GetUserDataDirectory(), Path.GetFileName(path));
-                    File.WriteAllBytes(output, st.GetBuffer());
+                    File.WriteAllBytes(output, st.ToArray());
                 }
             }
         }
 
         private void but_dem_Click(object sender, EventArgs e)
         {
-            UserControl ctl = new UserControl() { Width = 1100, AutoSize = true };
+            UserControl ctl = new UserControl() { Width = 1100, Height = 600, AutoSize = true };
 
+            FlowLayoutPanel flp = new FlowLayoutPanel() { Dock = DockStyle.Fill, AutoScroll = true };
+            var lbl2 = new Label() { Text = "Click on line to zoom to it", AutoSize = true };
+            flp.Controls.Add(lbl2);
             string line = "";
 
             foreach (var item in GeoTiff.index)
             {
                 //log.InfoFormat("Start Point ({0},{1},{2}) --> ({3},{4},{5})", item.i, item.j, item.k, item.x, item.y, item.z);
 
-                line += String.Format("{0} = {1} = {2}*{3} {4}\n", item.FileName, item.Area, item.width, item.height, item.bits,
-                    item.xscale, item.yscale, item.zscale);
+                line = String.Format("{0} = {1} = {2}*{3} {4} {8}\r\n", item.FileName, item.Area, item.width, item.height, item.bits,
+                    item.xscale, item.yscale, item.zscale, item.srcProjection?.Name ?? item.srcProjection?.Transform?.Name);
+
+                var lbl = new Label() { Text = line, AutoSize = true};
+                lbl.Click += (o, args) =>
+                {
+                    FlightData.instance.gMapControl1.SetZoomToFitRect(item.Area);
+                    FlightPlanner.instance.MainMap.SetZoomToFitRect(item.Area);
+                };
+                flp.Controls.Add(lbl);
             }
 
-            ctl.Controls.Add(new Label() { Text = line, AutoSize = true, Location = new Point(0, 30) });
-            var butt = new MyButton() { Text = "Open DEM Dir" };
+            ctl.Controls.Add(flp);
+            var butt = new MyButton() { Text = "Open DEM Dir", Dock = DockStyle.Top };
             butt.Click += (a, ev) =>
             {
-                System.Diagnostics.Process.Start(@"C:\ProgramData\Mission Planner\srtm\");
+                System.Diagnostics.Process.Start(srtm.datadirectory);
             };
             ctl.Controls.Add(butt);
 
@@ -1007,16 +967,26 @@ namespace MissionPlanner
         private void but_blupdate_Click(object sender, EventArgs e)
         {
             if (CustomMessageBox.Show("Are you sure you want to upgrade the bootloader? This can brick your board",
-                    "BL Update", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == (int)DialogResult.Yes)
-                if (CustomMessageBox.Show("Are you sure you want to upgrade the bootloader? This can brick your board, Please allow 5 mins for this process",
-                        "BL Update", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == (int)DialogResult.Yes)
-                    if (MainV2.comPort.doCommand((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, MAVLink.MAV_CMD.FLASH_BOOTLOADER, 0, 0, 0, 0, 290876, 0, 0))
+                "BL Update", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == (int) DialogResult.Yes)
+                if (CustomMessageBox.Show(
+                    "Are you sure you want to upgrade the bootloader? This can brick your board, Please allow 5 mins for this process",
+                    "BL Update", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == (int) DialogResult.Yes)
+                    try
                     {
-                        CustomMessageBox.Show("Upgraded bootloader");
+                        if (MainV2.comPort.doCommand((byte) MainV2.comPort.sysidcurrent,
+                            (byte) MainV2.comPort.compidcurrent, MAVLink.MAV_CMD.FLASH_BOOTLOADER, 0, 0, 0, 0, 290876,
+                            0, 0))
+                        {
+                            CustomMessageBox.Show("Upgraded bootloader");
+                        }
+                        else
+                        {
+                            CustomMessageBox.Show("Failed to upgrade bootloader");
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        CustomMessageBox.Show("Failed to upgrade bootloader");
+                        CustomMessageBox.Show(ex.ToString(), Strings.ERROR);
                     }
         }
 
@@ -1063,26 +1033,52 @@ namespace MissionPlanner
             Button but = new Button();
             but.Text = "Set";
             ComboBox cmbrate = new ComboBox();
-            cmbrate.DataSource = Enumerable.Range(1, 200).ToList();
+            cmbrate.DataSource = Enumerable.Range(0, 200).ToList();
 
             but.Click += (o, args) =>
             {
-                var rate = int.Parse(cmbrate.Text.ToString());
+                var rate = double.Parse(cmbrate.Text.ToString());
                 var value = Enum.Parse(typeof(MAVLink.MAVLINK_MSG_ID), cmb.Text.ToString());
-                MainV2.comPort.doCommand((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, MAVLink.MAV_CMD.SET_MESSAGE_INTERVAL, (float)(int)value,
-                    1 / (float)rate * 1000000.0f, 0, 0, 0, 0, 0);
+                float rateratio;
+                if (rate <= 0)
+                    rateratio = (float)rate;
+                else
+                    rateratio = 1.0f / (float) rate * 1000000.0f;
+                try
+                {
+                    MainV2.comPort.doCommand((byte) MainV2.comPort.sysidcurrent, (byte) MainV2.comPort.compidcurrent,
+                        MAVLink.MAV_CMD.SET_MESSAGE_INTERVAL, (float) (int) value, rateratio
+                        , 0, 0, 0, 0, 0);
+                }
+                catch (Exception ex)
+                {
+                    CustomMessageBox.Show(ex.ToString(), Strings.ERROR);
+                }
             };
 
             Button but2 = new Button();
             but2.Text = "Set All";
             but2.Click += (o, args) =>
             {
-                var rate = int.Parse(cmbrate.Text.ToString());
+                var rate = double.Parse(cmbrate.Text.ToString());
+                float rateratio;
+                if (rate <= 0)
+                    rateratio = (float)rate;
+                else
+                    rateratio = 1.0f / (float)rate * 1000000.0f;
                 ((IList)cmb.DataSource).ForEach(a =>
                {
                    var value = Enum.Parse(typeof(MAVLink.MAVLINK_MSG_ID), a.ToString());
-                   MainV2.comPort.doCommand((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, MAVLink.MAV_CMD.SET_MESSAGE_INTERVAL, (float)(int)value,
-                       1 / (float)rate * 1000000.0f, 0, 0, 0, 0, 0, false);
+                   try
+                   {
+                       MainV2.comPort.doCommand((byte) MainV2.comPort.sysidcurrent, (byte) MainV2.comPort.compidcurrent,
+                           MAVLink.MAV_CMD.SET_MESSAGE_INTERVAL, (float) (int) value,
+                           rateratio, 0, 0, 0, 0, 0, false);
+                   }
+                   catch (Exception ex)
+                   {
+                       CustomMessageBox.Show(ex.ToString(), Strings.ERROR);
+                   }
                });
             };
 
@@ -1107,9 +1103,16 @@ namespace MissionPlanner
         private void but_disablearmswitch_Click(object sender, EventArgs e)
         {
             if (CustomMessageBox.Show("Are you sure?", "", MessageBoxButtons.YesNo) == (int)DialogResult.Yes)
-                MainV2.comPort.setMode(
-                    new MAVLink.mavlink_set_mode_t() { custom_mode = MainV2.comPort.MAV.cs.armed ? 0u : 1u },
-                    MAVLink.MAV_MODE_FLAG.SAFETY_ARMED);
+            {   
+                var target_system = (byte)MainV2.comPort.sysidcurrent;
+                if (target_system == 0) {
+                    log.Info("Not toggling safety on sysid 0");
+                    return;
+                }
+                var custom_mode = (MainV2.comPort.MAV.cs.sensors_enabled.motor_control && MainV2.comPort.MAV.cs.sensors_enabled.seen) ? 1u : 0u;
+                var mode = new MAVLink.mavlink_set_mode_t() { custom_mode = custom_mode, target_system = target_system };
+                MainV2.comPort.setMode(mode, MAVLink.MAV_MODE_FLAG.SAFETY_ARMED);
+            }
         }
 
         private void but_hwids_Click(object sender, EventArgs e)
@@ -1147,21 +1150,25 @@ namespace MissionPlanner
             string input = "";
             InputBox.Show("input", "enter the hex byte data", ref input, false, true);
 
+            var ishex = input.Contains("0x") || input.ToLower().Any(a => a >= 'a' && a <= 'f');
+
             var split = input.Replace("0x", ",").Split(new char[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
-            var buffer = split.Select(a => Convert.ToByte(a, 16));
+            var buffer = split.Select(a => ishex ? Convert.ToByte(a, 16) : (byte)Convert.ToInt32(a, 10));
 
             MAVLink.MavlinkParse parse = new MAVLink.MavlinkParse();
 
             var packet = parse.ReadPacket(new MemoryStream(buffer.ToArray()));
 
             CustomMessageBox.Show(packet?.ToString() +
-                                  "\n" + packet.ToJSON().WrapText(5, new[] { ',' }));
+                                  "\n" + packet.ToJSON(Formatting.Indented));
         }
 
         private void but_acbarohight_Click(object sender, EventArgs e)
         {
-            var currentQNH = MainV2.comPort.GetParam("GND_ABS_PRESS").ToString();
+            var paramname = MainV2.comPort.MAV.param.ContainsKey("GND_ABS_PRESS") ? "GND_ABS_PRESS" : "BARO1_GND_PRESS";
+
+            var currentQNH = MainV2.comPort.GetParam(paramname).ToString();
             //338.6388 pa => 100' = 30.48m
             CustomMessageBox.Show("use at your own risk!!!");
 
@@ -1172,7 +1179,7 @@ namespace MissionPlanner
             mavlinkNumericUpDown.Padding = new Padding(20);
             mavlinkNumericUpDown.ValueChanged += (o, args) =>
                 {
-                    MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, "GND_ABS_PRESS", (float)(double.Parse(currentQNH) + (double)mavlinkNumericUpDown.Value * 11.1));
+                    MainV2.comPort.setParam((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent, paramname, (float)(double.Parse(currentQNH) + (double)mavlinkNumericUpDown.Value * 11.1));
                 };
 
             mavlinkNumericUpDown.ShowUserControl();
@@ -1358,6 +1365,68 @@ namespace MissionPlanner
         private void BUT_CoT_Click(object sender, EventArgs e)
         {
             new SerialOutputCoT().Show();
+        }
+
+        private void but_ManageCMDList_Click(object sender, EventArgs e)
+        {
+            var CMDList = new MavCommandSelection();
+            CMDList.Show();
+        }
+
+        private void but_signfw_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog ofd = new OpenFileDialog();
+            ofd.Title = "APJ File";
+            ofd.Filter = "*.apj|*.apj";
+            if (ofd.ShowDialog() == DialogResult.OK)
+            {
+                OpenFileDialog ofd2 = new OpenFileDialog();
+                ofd2.Title = "Param File";
+                ofd2.Filter = "*.param|*.param|*.parm|*.parm";
+                if (ofd2.ShowDialog() == DialogResult.OK)
+                {
+                    apj_tool.Process(ofd.FileName, ofd2.FileName);
+
+                    CustomMessageBox.Show("The new APJ has been saved with the source APJ");
+                }
+            }
+        }
+
+        private void but_dfumode_Click(object sender, EventArgs e)
+        {
+            MainV2.comPort.doDFUBoot((byte) MainV2.comPort.sysidcurrent, (byte) MainV2.comPort.compidcurrent);
+        }
+
+        // Perform a force calibration for accelerometers when restoring parameters to a board after a param wipe,
+        // to mark the parameters as calibrated.
+        private void BUT_forcecal_accel_Click(object sender, EventArgs e)
+        {
+            // Send MAV_CMD_PREFLIGHT_CALIBRATION with param5=76 (magic number)
+            try
+            {
+                MainV2.comPort.doCommand((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent,
+                    MAVLink.MAV_CMD.PREFLIGHT_CALIBRATION, 0, 0, 0, 0, 76, 0, 0, true);
+            }
+            catch (Exception ex)
+            {
+                CustomMessageBox.Show(ex.ToString(), Strings.ERROR);
+            }
+        }
+
+        // Perform a force calibration for compasses when restoring parameters to a board after a param wipe,
+        // to mark the parameters as calibrated.
+        private void BUT_forcecal_mag_Click(object sender, EventArgs e)
+        {
+            // Send MAV_CMD_PREFLIGHT_CALIBRATION with param2=76 (magic number)
+            try
+            {
+                MainV2.comPort.doCommand((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent,
+                    MAVLink.MAV_CMD.PREFLIGHT_CALIBRATION, 0, 76, 0, 0, 0, 0, 0, true);
+            }
+            catch (Exception ex)
+            {
+                CustomMessageBox.Show(ex.ToString(), Strings.ERROR);
+            }
         }
     }
 }

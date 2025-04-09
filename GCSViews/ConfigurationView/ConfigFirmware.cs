@@ -15,7 +15,7 @@ using System.Windows.Forms;
 
 namespace MissionPlanner.GCSViews.ConfigurationView
 {
-    partial class ConfigFirmware : MyUserControl, IActivate, IDeactivate
+    public partial class ConfigFirmware : MyUserControl, IActivate, IDeactivate
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static List<Firmware.software> softwares = new List<Firmware.software>();
@@ -388,6 +388,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
         }
 
+        public static Func<List<ArduPilot.DeviceInfo>> ExtraDeviceInfo;
+
         private void findfirmware(Firmware.software fwtoupload)
         {
             var dr = CustomMessageBox.Show(Strings.AreYouSureYouWantToUpload + fwtoupload.name + Strings.QuestionMark,
@@ -427,7 +429,22 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                     //history = "";
                 }
 
-                var updated = fw.update(MainV2.comPortName, fwtoupload, history, Win32DeviceMgmt.GetAllCOMPorts());
+                var ports = Win32DeviceMgmt.GetAllCOMPorts();
+                ports.AddRange(Linux.GetAllCOMPorts());
+
+                if (ExtraDeviceInfo != null)
+                {
+                    try
+                    {
+                        ports.AddRange(ExtraDeviceInfo.Invoke());
+                    }
+                    catch
+                    {
+
+                    }
+                }
+
+                var updated = fw.updateLegacy(MainV2.comPortName, fwtoupload, history, ports);
 
                 if (updated)
                 {
@@ -503,7 +520,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         //Load custom firmware (old CTRL+C shortcut)
         private void Custom_firmware_label_Click(object sender, EventArgs e)
         {
-            using (var fd = new OpenFileDialog { Filter = "Firmware (*.hex;*.px4;*.vrx;*.apj)|*.hex;*.px4;*.vrx;*.apj|All files (*.*)|*.*" })
+            using (var fd = new OpenFileDialog
+                {Filter = "Firmware (*.hex;*.px4;*.vrx;*.apj)|*.hex;*.px4;*.vrx;*.apj|All files (*.*)|*.*"})
             {
                 if (Directory.Exists(custom_fw_dir))
                     fd.InitialDirectory = custom_fw_dir;
@@ -522,18 +540,34 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                         if (fd.FileName.ToLower().EndsWith(".px4") || fd.FileName.ToLower().EndsWith(".apj"))
                         {
                             if (solo.Solo.is_solo_alive &&
-                                CustomMessageBox.Show("Solo", "Is this a Solo?", CustomMessageBox.MessageBoxButtons.YesNo) == CustomMessageBox.DialogResult.Yes)
+                                CustomMessageBox.Show("Solo", "Is this a Solo?",
+                                    CustomMessageBox.MessageBoxButtons.YesNo) == CustomMessageBox.DialogResult.Yes)
                             {
                                 boardtype = BoardDetect.boards.solo;
                             }
                             else
                             {
-                                boardtype = BoardDetect.boards.px4v2;
+                                boardtype = BoardDetect.boards.px4v3;
                             }
                         }
                         else
                         {
-                            boardtype = BoardDetect.DetectBoard(MainV2.comPortName, Win32DeviceMgmt.GetAllCOMPorts());
+                            var ports = Win32DeviceMgmt.GetAllCOMPorts();
+                            ports.AddRange(Linux.GetAllCOMPorts());
+
+                            if (ExtraDeviceInfo != null)
+                            {
+                                try
+                                {
+                                    ports.AddRange(ExtraDeviceInfo.Invoke());
+                                }
+                                catch
+                                {
+
+                                }
+                            }
+
+                            boardtype = BoardDetect.DetectBoard(MainV2.comPortName, ports);
                         }
 
                         if (boardtype == BoardDetect.boards.none)
@@ -548,7 +582,14 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                         return;
                     }
 
-                    fw.UploadFlash(MainV2.comPortName, fd.FileName, boardtype);
+                    try
+                    {
+                        fw.UploadFlash(MainV2.comPortName, fd.FileName, boardtype);
+                    }
+                    catch (Exception ex)
+                    {
+                        CustomMessageBox.Show(ex.ToString(), Strings.ERROR);
+                    }
                 }
             }
         }

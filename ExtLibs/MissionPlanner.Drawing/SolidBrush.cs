@@ -17,11 +17,13 @@ namespace System.Drawing
 
             try
             {
+                var loader = SKTypeface.Default;
+
                 nativeBrush = new SKPaint() {Color = color.ToSKColor()};
             }
             catch (Exception e)
             {
-                //Console.WriteLine(e);
+                Console.WriteLine(e);
             }
         }
 
@@ -40,16 +42,11 @@ namespace System.Drawing
                 {
                     nativeBrush.Color = value.ToSKColor();
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     //Console.WriteLine(e);
                 }
             }
-        }
-
-        public Brush Clone()
-        {
-            return new SolidBrush() {nativeBrush = nativeBrush?.Clone()};
         }
 
         public void ScaleTransform(float rectangleWidth, float rectangleHeight, MatrixOrder append)

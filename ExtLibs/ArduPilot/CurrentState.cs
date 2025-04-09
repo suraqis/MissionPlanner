@@ -6,6 +6,7 @@ using Newtonsoft.Json;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
@@ -17,13 +18,22 @@ namespace MissionPlanner
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        [JsonIgnore] [IgnoreDataMember] public static ISpeech Speech;
+        [JsonIgnore][IgnoreDataMember] public static ISpeech Speech;
 
         // multipliers
+        /// <summary>
+        /// Convert the SI unit (m) to the display unit *
+        /// </summary>
         public static float multiplierdist = 1;
         public static string DistanceUnit = "";
+        /// <summary>
+        /// Convert the SI unit (ms) to the display unit *
+        /// </summary>
         public static float multiplierspeed = 1;
         public static string SpeedUnit = "";
+        /// <summary>
+        /// Convert the SI unit (m) to the display unit *
+        /// </summary>
         public static float multiplieralt = 1;
         public static string AltUnit = "";
 
@@ -71,7 +81,7 @@ namespace MissionPlanner
 
         private uint _mode = 99999;
 
-        private PointLatLngAlt _movingbase = new PointLatLngAlt();
+        private PointLatLngAlt _base = new PointLatLngAlt();
         private float _remotesnrdb;
 
         private float _sonarrange;
@@ -132,7 +142,11 @@ namespace MissionPlanner
                 _parent = value;
                 if (parent != null)
                     if (parent.parent != null)
+                    {
+                        // 100% ensure no duplicates
+                        parent.parent.OnPacketReceived -= Parent_OnPacketReceived;
                         parent.parent.OnPacketReceived += Parent_OnPacketReceived;
+                    }
             }
         }
 
@@ -160,6 +174,11 @@ namespace MissionPlanner
         public Mavlink_Sensors sensors_health = new Mavlink_Sensors();
         public Mavlink_Sensors sensors_present = new Mavlink_Sensors();
 
+        public bool prearmstatus
+        {
+            get => connected && (sensors_health.prearm || !sensors_enabled.prearm);
+        }
+
         private bool useLocation;
 
         /// <summary>
@@ -171,6 +190,9 @@ namespace MissionPlanner
         ///     used in wind calc
         /// </summary>
         private double Wn_fgo;
+
+        //It is true when we got a VFR_HUD message, so it can be used to get climbrate, instead of calculating it from time and alt change.
+        private bool gotVFR = false;
 
         static CurrentState()
         {
@@ -204,6 +226,9 @@ namespace MissionPlanner
 
             var t = Type.GetType("Mono.Runtime");
             MONO = t != null;
+
+            // Initialize firmware type from settings file
+            Enum.TryParse(Settings.Instance.APMFirmware, out firmware);
         }
 
         // propery name, Name   Name starts with MAV_ will link to named_value_float messages
@@ -219,17 +244,30 @@ namespace MissionPlanner
         public float customfield7 { get; set; }
         public float customfield8 { get; set; }
         public float customfield9 { get; set; }
+        public float customfield10 { get; set; }
+        public float customfield11 { get; set; }
+        public float customfield12 { get; set; }
+        public float customfield13 { get; set; }
+        public float customfield14 { get; set; }
+        public float customfield15 { get; set; }
+        public float customfield16 { get; set; }
+        public float customfield17 { get; set; }
+        public float customfield18 { get; set; }
+        public float customfield19 { get; set; }
 
         // orientation - rads
+        [DisplayFieldName("roll.Field")]
         [DisplayText("Roll (deg)")]
         [GroupText("Attitude")]
         public float roll { get; set; }
 
         [GroupText("Attitude")]
+        [DisplayFieldName("pitch.Field")]
         [DisplayText("Pitch (deg)")]
         public float pitch { get; set; }
 
         [GroupText("Attitude")]
+        [DisplayFieldName("yaw.Field")]
         [DisplayText("Yaw (deg)")]
         public float yaw
         {
@@ -244,14 +282,17 @@ namespace MissionPlanner
         }
 
         [GroupText("Attitude")]
+        [DisplayFieldName("SSA.Field")]
         [DisplayText("SSA (deg)")]
         public float SSA { get; set; }
 
         [GroupText("Attitude")]
+        [DisplayFieldName("AOA.Field")]
         [DisplayText("AOA (deg)")]
         public float AOA { get; set; }
 
         [GroupText("Position")]
+        [DisplayFieldName("groundcourse.Field")]
         [DisplayText("GroundCourse (deg)")]
         public float groundcourse
         {
@@ -266,27 +307,34 @@ namespace MissionPlanner
         }
 
         // position
+        [DisplayFieldName("lat.Field")]
         [DisplayText("Latitude (dd)")]
         [GroupText("Position")]
         public double lat { get; set; }
 
         [GroupText("Position")]
+        [DisplayFieldName("lng.Field")]
         [DisplayText("Longitude (dd)")]
         public double lng { get; set; }
 
         [GroupText("Position")]
+        [DisplayFieldName("alt.Field")]
         [DisplayText("Altitude (alt)")]
         public float alt
         {
             get => (_alt - altoffsethome) * multiplieralt;
             set
             {
-                // check update rate, and ensure time hasnt gone backwards                
+                // check update rate, and ensure time hasnt gone backwards
                 _alt = value;
 
                 if ((datetime - lastalt).TotalSeconds >= 0.2 && oldalt != alt || lastalt > datetime)
                 {
-                    climbrate = (alt - oldalt) / (float)(datetime - lastalt).TotalSeconds;
+                    //Don't update climbrate if we got a VFR_HUD message, because it is more accurate
+                    if (!gotVFR)
+                    {
+                        climbrate = (alt - oldalt) / (float)(datetime - lastalt).TotalSeconds;
+                    }
                     verticalspeed = (alt - oldalt) / (float)(datetime - lastalt).TotalSeconds;
                     if (float.IsInfinity(_verticalspeed))
                         _verticalspeed = 0;
@@ -297,7 +345,8 @@ namespace MissionPlanner
         }
 
         [GroupText("Position")]
-        [DisplayText("Altitude (dist)")]
+        [DisplayFieldName("altasl.Field")]
+        [DisplayText("Altitude (alt)")]
         public float altasl
         {
             get => _altasl * multiplieralt;
@@ -305,47 +354,58 @@ namespace MissionPlanner
         }
 
         [GroupText("Position")]
+        [DisplayFieldName("horizondist.Field")]
         [DisplayText("Horizon Dist (dist)")]
         public float horizondist => (float)(3570 * Math.Sqrt(alt)) * multiplierdist;
 
         [GroupText("Position")]
+        [DisplayFieldName("vx.Field")]
         [DisplayText("Velocity X (ms)")]
         public double vx { get; set; }
 
         [DisplayText("Velocity Y (ms)")]
+        [DisplayFieldName("vy.Field")]
         [GroupText("Position")]
         public double vy { get; set; }
 
         [DisplayText("Velocity Z (ms)")]
+        [DisplayFieldName("vz.Field")]
         [GroupText("Position")]
         public double vz { get; set; }
 
         [GroupText("Position")] public double vlen => Math.Sqrt(Math.Pow(vx, 2) + Math.Pow(vy, 2) + Math.Pow(vz, 2));
 
         [GroupText("Position")]
+        [DisplayFieldName("altoffsethome.Field")]
         [DisplayText("Alt Home Offset (dist)")]
         public float altoffsethome { get; set; }
 
         [GroupText("Position")]
+        [DisplayFieldName("gpsstatus.Field")]
         [DisplayText("Gps Status")]
         public float gpsstatus { get; set; }
 
+        [DisplayFieldName("gpshdop.Field")]
         [DisplayText("Gps HDOP")]
         [GroupText("Position")]
         public float gpshdop { get; set; }
 
+        [DisplayFieldName("satcount.Field")]
         [DisplayText("Sat Count")]
         [GroupText("Position")]
         public float satcount { get; set; }
 
-        [DisplayText("Horizontal Accuracy")]
+        [DisplayFieldName("gpsh_acc.Field")]
+        [DisplayText("H Acc (m)")]
         [GroupText("Position")]
         public float gpsh_acc { get; private set; }
 
-        [DisplayText("Vertical Accuracy")]
+        [DisplayFieldName("gpsv_acc.Field")]
+        [DisplayText("V Acc (m)")]
         [GroupText("Position")]
         public float gpsv_acc { get; private set; }
 
+        [DisplayFieldName("gpsvel_acc.Field")]
         [DisplayText("Velocity Accuracy")]
         [GroupText("Position")]
         public float gpsvel_acc { get; private set; }
@@ -354,10 +414,16 @@ namespace MissionPlanner
         [GroupText("Position")]
         public float gpshdg_acc { get; private set; }
 
+        [DisplayFieldName("gpsyaw.Field")]
+        [DisplayText("GPS Yaw (deg)")]
+        [GroupText("Position")]
+        public float gpsyaw { get; private set; }
+
         [DisplayText("Latitude2 (dd)")]
         [GroupText("Position")]
         public double lat2 { get; set; }
 
+        [DisplayFieldName("lng2.Field")]
         [DisplayText("Longitude2 (dd)")]
         [GroupText("Position")]
         public double lng2 { get; set; }
@@ -382,8 +448,31 @@ namespace MissionPlanner
         public float groundspeed2 { get; set; }
 
         [DisplayText("GroundCourse2 (deg)")]
+        [DisplayFieldName("groundcourse2.Field")]
         [GroupText("Position")]
         public float groundcourse2 { get; set; }
+
+
+        [DisplayText("H Acc2 (m)")]
+        [GroupText("Position")]
+        public float gpsh_acc2 { get; private set; }
+
+        [DisplayText("V Acc2 (m)")]
+        [GroupText("Position")]
+        public float gpsv_acc2 { get; private set; }
+
+        [DisplayText("Velocity Accuracy")]
+        [GroupText("Position")]
+        public float gpsvel_acc2 { get; private set; }
+
+        [DisplayText("Heading Accuracy")]
+        [GroupText("Position")]
+        public float gpshdg_acc2 { get; private set; }
+
+        [DisplayFieldName("gpsyaw2.Field")]
+        [DisplayText("GPS Yaw (deg)")]
+        [GroupText("Position")]
+        public float gpsyaw2 { get; private set; }
 
         [DisplayText("Sat Count Blend")]
         [GroupText("Position")]
@@ -392,27 +481,44 @@ namespace MissionPlanner
         [GroupText("Position")]
         public DateTime gpstime { get; set; }
 
-        public float altd1000 => alt / 1000 % 10;
+        [GroupText("Other")] public float altd1000 => alt / 1000 % 10;
 
-        public float altd100 => alt / 100 % 10;
+        [GroupText("Other")] public float altd100 => alt / 100 % 10;
 
         // speeds
+        [DisplayFieldName("airspeed.Field")]
         [DisplayText("AirSpeed (speed)")]
+        [GroupText("Sensor")]
         public float airspeed
         {
             get => _airspeed * multiplierspeed;
             set => _airspeed = value;
         }
 
+        [DisplayFieldName("targetairspeed.Field")]
         [DisplayText("Airspeed Target (speed)")]
+        [GroupText("NAV")]
         public float targetairspeed { get; private set; }
 
         public bool lowairspeed { get; set; }
 
+        [DisplayFieldName("asratio.Field")]
         [DisplayText("Airspeed Ratio")]
+        [GroupText("Calibration")]
         public float asratio { get; set; }
 
+        [DisplayFieldName("airspeed1_temp.Field")]
+        [DisplayText("Airspeed1 Temperature")]
+        [GroupText("Sensor")]
+        public float airspeed1_temp { get; set; }
+
+        [DisplayFieldName("airspeed2_temp.Field")]
+        [DisplayText("Airspeed2 Temperature")]
+        [GroupText("Sensor")]
+        public float airspeed2_temp { get; set; }
+
         [GroupText("Position")]
+        [DisplayFieldName("groundspeed.Field")]
         [DisplayText("GroundSpeed (speed)")]
         public float groundspeed
         {
@@ -421,157 +527,227 @@ namespace MissionPlanner
         }
 
         // accel
+        [DisplayFieldName("ax.Field")]
         [DisplayText("Accel X")]
         [GroupText("Sensor")]
         public float ax { get; set; }
 
+        [DisplayFieldName("ay.Field")]
         [DisplayText("Accel Y")]
         [GroupText("Sensor")]
         public float ay { get; set; }
 
+        [DisplayFieldName("az.Field")]
         [DisplayText("Accel Z")]
         [GroupText("Sensor")]
         public float az { get; set; }
 
+        [DisplayFieldName("accelsq.Field")]
         [DisplayText("Accel Strength")]
         [GroupText("Sensor")]
         public float accelsq => (float)Math.Sqrt(Math.Pow(ax, 2) + Math.Pow(ay, 2) + Math.Pow(az, 2)) / 1000.0f;
 
         // gyro
+        [DisplayFieldName("gx.Field")]
         [DisplayText("Gyro X")]
         [GroupText("Sensor")]
         public float gx { get; set; }
 
+        [DisplayFieldName("gy.Field")]
         [DisplayText("Gyro Y")]
         [GroupText("Sensor")]
         public float gy { get; set; }
 
+        [DisplayFieldName("gz.Field")]
         [DisplayText("Gyro Z")]
         [GroupText("Sensor")]
         public float gz { get; set; }
 
+        [DisplayFieldName("gyrosq.Field")]
         [DisplayText("Gyro Strength")]
         [GroupText("Sensor")]
         public float gyrosq => (float)Math.Sqrt(Math.Pow(gx, 2) + Math.Pow(gy, 2) + Math.Pow(gz, 2));
 
         // mag
+        [DisplayFieldName("mx.Field")]
         [DisplayText("Mag X")]
         [GroupText("Sensor")]
         public float mx { get; set; }
 
+        [DisplayFieldName("my.Field")]
         [DisplayText("Mag Y")]
         [GroupText("Sensor")]
         public float my { get; set; }
 
+        [DisplayFieldName("mz.Field")]
         [DisplayText("Mag Z")]
         [GroupText("Sensor")]
         public float mz { get; set; }
 
+        [DisplayFieldName("magfield.Field")]
         [DisplayText("Mag Field")]
         [GroupText("Sensor")]
         public float magfield => (float)Math.Sqrt(Math.Pow(mx, 2) + Math.Pow(my, 2) + Math.Pow(mz, 2));
 
+        [DisplayFieldName("imu1_temp.Field")]
+        [DisplayText("IMU1 Temperature")]
+        [GroupText("Sensor")]
+        public float imu1_temp { get; set; }
+
         // accel2
+        [DisplayFieldName("ax2.Field")]
         [DisplayText("Accel2 X")]
         [GroupText("Sensor")]
         public float ax2 { get; set; }
 
+        [DisplayFieldName("ay2.Field")]
         [DisplayText("Accel2 Y")]
         [GroupText("Sensor")]
         public float ay2 { get; set; }
 
+        [DisplayFieldName("az2.Field")]
         [DisplayText("Accel2 Z")]
         [GroupText("Sensor")]
         public float az2 { get; set; }
 
+        [DisplayFieldName("accelsq2.Field")]
         [DisplayText("Accel2 Strength")]
         [GroupText("Sensor")]
         public float accelsq2 => (float)Math.Sqrt(Math.Pow(ax2, 2) + Math.Pow(ay2, 2) + Math.Pow(az2, 2)) / 1000.0f;
 
         // gyro2
+        [DisplayFieldName("gx2.Field")]
         [DisplayText("Gyro2 X")]
         [GroupText("Sensor")]
         public float gx2 { get; set; }
 
+        [DisplayFieldName("gy2.Field")]
         [DisplayText("Gyro2 Y")]
         [GroupText("Sensor")]
         public float gy2 { get; set; }
 
+        [DisplayFieldName("gz2.Field")]
         [DisplayText("Gyro2 Z")]
         [GroupText("Sensor")]
         public float gz2 { get; set; }
 
+        [DisplayFieldName("gyrosq2.Field")]
         [DisplayText("Gyro2 Strength")]
         [GroupText("Sensor")]
         public float gyrosq2 => (float)Math.Sqrt(Math.Pow(gx2, 2) + Math.Pow(gy2, 2) + Math.Pow(gz2, 2));
 
         // mag2
+        [DisplayFieldName("mx2.Field")]
         [DisplayText("Mag2 X")]
         [GroupText("Sensor")]
         public float mx2 { get; set; }
 
+        [DisplayFieldName("my2.Field")]
         [DisplayText("Mag2 Y")]
         [GroupText("Sensor")]
         public float my2 { get; set; }
 
+        [DisplayFieldName("mz2.Field")]
         [DisplayText("Mag2 Z")]
         [GroupText("Sensor")]
         public float mz2 { get; set; }
 
+        [DisplayFieldName("magfield2.Field")]
         [DisplayText("Mag2 Field")]
         [GroupText("Sensor")]
         public float magfield2 => (float)Math.Sqrt(Math.Pow(mx2, 2) + Math.Pow(my2, 2) + Math.Pow(mz2, 2));
 
+        [DisplayFieldName("imu2_temp.Field")]
+        [DisplayText("IMU2 Temperature")]
+        [GroupText("Sensor")]
+        public float imu2_temp { get; set; }
+
         // accel3
+        [DisplayFieldName("ax3.Field")]
         [DisplayText("Accel3 X")]
         [GroupText("Sensor")]
         public float ax3 { get; set; }
 
+        [DisplayFieldName("ay3.Field")]
         [DisplayText("Accel3 Y")]
         [GroupText("Sensor")]
         public float ay3 { get; set; }
 
+        [DisplayFieldName("az3.Field")]
         [DisplayText("Accel3 Z")]
         [GroupText("Sensor")]
         public float az3 { get; set; }
 
+        [DisplayFieldName("accelsq3.Field")]
         [DisplayText("Accel3 Strength")]
         [GroupText("Sensor")]
         public float accelsq3 => (float)Math.Sqrt(Math.Pow(ax3, 2) + Math.Pow(ay3, 2) + Math.Pow(az3, 2)) / 1000.0f;
 
         // gyro3
+        [DisplayFieldName("gx3.Field")]
         [DisplayText("Gyro3 X")]
         [GroupText("Sensor")]
         public float gx3 { get; set; }
 
+        [DisplayFieldName("gy3.Field")]
         [DisplayText("Gyro3 Y")]
         [GroupText("Sensor")]
         public float gy3 { get; set; }
 
+        [DisplayFieldName("gz3.Field")]
         [DisplayText("Gyro3 Z")]
         [GroupText("Sensor")]
         public float gz3 { get; set; }
 
+        [DisplayFieldName("gyrosq3.Field")]
         [DisplayText("Gyro3 Strength")]
         [GroupText("Sensor")]
         public float gyrosq3 => (float)Math.Sqrt(Math.Pow(gx3, 2) + Math.Pow(gy3, 2) + Math.Pow(gz3, 2));
 
         // mag3
+        [DisplayFieldName("mx3.Field")]
         [DisplayText("Mag3 X")]
         [GroupText("Sensor")]
         public float mx3 { get; set; }
 
+        [DisplayFieldName("my2.Field")]
         [DisplayText("Mag3 Y")]
         [GroupText("Sensor")]
         public float my3 { get; set; }
 
+        [DisplayFieldName("mz3.Field")]
         [DisplayText("Mag3 Z")]
         [GroupText("Sensor")]
         public float mz3 { get; set; }
 
+        [DisplayFieldName("magfield3.Field")]
         [DisplayText("Mag3 Field")]
         [GroupText("Sensor")]
         public float magfield3 => (float)Math.Sqrt(Math.Pow(mx3, 2) + Math.Pow(my3, 2) + Math.Pow(mz3, 2));
+
+
+        [DisplayFieldName("imu3_temp.Field")]
+        [DisplayText("IMU3 Temperature")]
+        [GroupText("Sensor")]
+        public float imu3_temp { get; set; }
+
+        // hygrometer1
+        [DisplayText("hygrotemp1 (cdegC)")]
+        [GroupText("Sensor")]
+        public short hygrotemp1 { get; set; }
+
+        [DisplayText("hygrohumi1 (c%)")]
+        [GroupText("Sensor")]
+        public ushort hygrohumi1 { get; set; }
+
+        // hygrometer2
+        [DisplayText("hygrotemp2 (cdegC)")]
+        [GroupText("Sensor")]
+        public short hygrotemp2 { get; set; }
+
+        [DisplayText("hygrohumi2 (c%)")]
+        [GroupText("Sensor")]
+        public ushort hygrohumi2 { get; set; }
 
         //radio
         [GroupText("RadioIn")] public float ch1in { get; set; }
@@ -639,6 +815,38 @@ namespace MissionPlanner
 
         [GroupText("RadioOut")] public float ch16out { get; set; }
 
+        [GroupText("RadioOut")] public float ch17out { get; set; }
+
+        [GroupText("RadioOut")] public float ch18out { get; set; }
+
+        [GroupText("RadioOut")] public float ch19out { get; set; }
+
+        [GroupText("RadioOut")] public float ch20out { get; set; }
+
+        [GroupText("RadioOut")] public float ch21out { get; set; }
+
+        [GroupText("RadioOut")] public float ch22out { get; set; }
+
+        [GroupText("RadioOut")] public float ch23out { get; set; }
+
+        [GroupText("RadioOut")] public float ch24out { get; set; }
+
+        [GroupText("RadioOut")] public float ch25out { get; set; }
+
+        [GroupText("RadioOut")] public float ch26out { get; set; }
+
+        [GroupText("RadioOut")] public float ch27out { get; set; }
+
+        [GroupText("RadioOut")] public float ch28out { get; set; }
+
+        [GroupText("RadioOut")] public float ch29out { get; set; }
+
+        [GroupText("RadioOut")] public float ch30out { get; set; }
+
+        [GroupText("RadioOut")] public float ch31out { get; set; }
+
+        [GroupText("RadioOut")] public float ch32out { get; set; }
+
         [GroupText("ESC")] public float esc1_volt { get; set; }
         [GroupText("ESC")] public float esc1_curr { get; set; }
         [GroupText("ESC")] public float esc1_rpm { get; set; }
@@ -679,6 +887,49 @@ namespace MissionPlanner
         [GroupText("ESC")] public float esc8_rpm { get; set; }
         [GroupText("ESC")] public float esc8_temp { get; set; }
 
+        [GroupText("ESC")] public float esc9_volt { get; set; }
+        [GroupText("ESC")] public float esc9_curr { get; set; }
+        [GroupText("ESC")] public float esc9_rpm { get; set; }
+        [GroupText("ESC")] public float esc9_temp { get; set; }
+
+        [GroupText("ESC")] public float esc10_volt { get; set; }
+        [GroupText("ESC")] public float esc10_curr { get; set; }
+        [GroupText("ESC")] public float esc10_rpm { get; set; }
+        [GroupText("ESC")] public float esc10_temp { get; set; }
+
+        [GroupText("ESC")] public float esc11_volt { get; set; }
+        [GroupText("ESC")] public float esc11_curr { get; set; }
+        [GroupText("ESC")] public float esc11_rpm { get; set; }
+        [GroupText("ESC")] public float esc11_temp { get; set; }
+
+        [GroupText("ESC")] public float esc12_volt { get; set; }
+        [GroupText("ESC")] public float esc12_curr { get; set; }
+        [GroupText("ESC")] public float esc12_rpm { get; set; }
+        [GroupText("ESC")] public float esc12_temp { get; set; }
+
+        [GroupText("ESC")] public float esc13_volt { get; set; }
+        [GroupText("ESC")] public float esc13_curr { get; set; }
+        [GroupText("ESC")] public float esc13_rpm { get; set; }
+        [GroupText("ESC")] public float esc13_temp { get; set; }
+
+        [GroupText("ESC")] public float esc14_volt { get; set; }
+        [GroupText("ESC")] public float esc14_curr { get; set; }
+        [GroupText("ESC")] public float esc14_rpm { get; set; }
+        [GroupText("ESC")] public float esc14_temp { get; set; }
+
+        [GroupText("ESC")] public float esc15_volt { get; set; }
+        [GroupText("ESC")] public float esc15_curr { get; set; }
+        [GroupText("ESC")] public float esc15_rpm { get; set; }
+        [GroupText("ESC")] public float esc15_temp { get; set; }
+
+        [GroupText("ESC")] public float esc16_volt { get; set; }
+        [GroupText("ESC")] public float esc16_curr { get; set; }
+        [GroupText("ESC")] public float esc16_rpm { get; set; }
+        [GroupText("ESC")] public float esc16_temp { get; set; }
+
+
+
+        [GroupText("RadioOut")]
         public float ch3percent
         {
             get
@@ -708,10 +959,15 @@ namespace MissionPlanner
             set => _ch3percent = value;
         }
 
-        [DisplayText("Failsafe")] public bool failsafe { get; set; }
+        [DisplayFieldName("failsafe.Field")]
+        [DisplayText("Failsafe")][GroupText("Software")] public bool failsafe { get; set; }
 
-        [DisplayText("RX Rssi")] public int rxrssi { get; set; }
+        [DisplayFieldName("rxrssi.Field")]
+        [DisplayText("RX Rssi")][GroupText("Telem")] public int rxrssi { get; set; }
 
+        [GroupText("Attitude")]
+        [DisplayFieldName("crit_AOA.Field")]
+        [DisplayText("Crit AOA (deg)")]
         public float crit_AOA
         {
             get
@@ -735,7 +991,9 @@ namespace MissionPlanner
 
         public bool lowgroundspeed { get; set; }
 
+        [DisplayFieldName("verticalspeed.Field")]
         [DisplayText("Vertical Speed (speed)")]
+        [GroupText("Position")]
         public float verticalspeed
         {
             get
@@ -746,9 +1004,11 @@ namespace MissionPlanner
             set => _verticalspeed = _verticalspeed * 0.4f + value * 0.6f;
         }
 
-        [DisplayText("Vertical Speed (fpm)")] public double verticalspeed_fpm => vz * -3.28084 * 60;
+        [DisplayText("Vertical Speed (fpm)")][GroupText("Position")] public double verticalspeed_fpm => vz * -3.28084 * 60;
 
+        [DisplayFieldName("glide_ratio.Field")]
         [DisplayText("Glide Ratio")]
+        [GroupText("Position")]
         public double glide_ratio
         {
             get
@@ -760,22 +1020,27 @@ namespace MissionPlanner
 
         //nav state
         [GroupText("NAV")]
+        [DisplayFieldName("nav_roll.Field")]
         [DisplayText("Roll Target (deg)")]
         public float nav_roll { get; set; }
 
         [GroupText("NAV")]
+        [DisplayFieldName("nav_pitch.Field")]
         [DisplayText("Pitch Target (deg)")]
         public float nav_pitch { get; set; }
 
         [GroupText("NAV")]
+        [DisplayFieldName("nav_bearing.Field")]
         [DisplayText("Bearing Target (deg)")]
         public float nav_bearing { get; set; }
 
         [GroupText("NAV")]
+        [DisplayFieldName("target_bearing.Field")]
         [DisplayText("Bearing Target (deg)")]
         public float target_bearing { get; set; }
 
         [GroupText("NAV")]
+        [DisplayFieldName("wp_dist.Field")]
         [DisplayText("Dist to WP (dist)")]
         public float wp_dist
         {
@@ -784,6 +1049,7 @@ namespace MissionPlanner
         }
 
         [GroupText("NAV")]
+        [DisplayFieldName("alt_error.Field")]
         [DisplayText("Altitude Error (dist)")]
         public float alt_error
         {
@@ -797,6 +1063,7 @@ namespace MissionPlanner
         }
 
         [GroupText("NAV")]
+        [DisplayFieldName("ber_error.Field")]
         [DisplayText("Bearing Error (deg)")]
         public float ber_error
         {
@@ -805,6 +1072,7 @@ namespace MissionPlanner
         }
 
         [GroupText("NAV")]
+        [DisplayFieldName("aspd_error.Field")]
         [DisplayText("Airspeed Error (speed)")]
         public float aspd_error
         {
@@ -818,18 +1086,23 @@ namespace MissionPlanner
         }
 
         [GroupText("NAV")]
+        [DisplayFieldName("xtrack_error.Field")]
         [DisplayText("Xtrack Error (m)")]
         public float xtrack_error { get; set; }
 
         [GroupText("NAV")]
+        [DisplayFieldName("wpno.Field")]
         [DisplayText("WP No")]
         public float wpno { get; set; }
 
         [GroupText("NAV")]
+        [DisplayFieldName("mode.Field")]
         [DisplayText("Mode")]
         public string mode { get; set; }
 
+        [DisplayFieldName("climbrate.Field")]
         [DisplayText("ClimbRate (speed)")]
+        [GroupText("Position")]
         public float climbrate
         {
             get => _climbrate * multiplierspeed;
@@ -840,6 +1113,7 @@ namespace MissionPlanner
         /// <summary>
         ///     time over target in seconds
         /// </summary>
+        [DisplayFieldName("tot.Field")]
         [DisplayText("Time over Target (sec)")]
         [GroupText("NAV")]
         public int tot
@@ -851,6 +1125,7 @@ namespace MissionPlanner
             }
         }
 
+        [DisplayFieldName("toh.Field")]
         [DisplayText("Time over Home (sec)")]
         [GroupText("NAV")]
         public int toh
@@ -862,18 +1137,23 @@ namespace MissionPlanner
             }
         }
 
-        [DisplayText("Dist Traveled (dist)")] public float distTraveled { get; set; }
+        [DisplayFieldName("distTraveled.Field")]
+        [DisplayText("Dist Traveled (dist)")][GroupText("Position")] public float distTraveled { get; set; }
 
-        [DisplayText("Time in Air (sec)")] public float timeSinceArmInAir { get; set; }
+        [DisplayText("Time in Air (sec)")][GroupText("Position")] public float timeSinceArmInAir { get; set; }
 
-        [DisplayText("Time in Air (sec)")] public float timeInAir { get; set; }
+        [DisplayFieldName("timeInAir.Field")]
+        [DisplayText("Time in Air (sec)")][GroupText("Position")] public float timeInAir { get; set; }
 
         //Time in Air converted to min.sec format for easier reading
         [DisplayText("Time in Air (min.sec)")]
+        [GroupText("Position")]
         public float timeInAirMinSec => (int)(timeInAir / 60) + timeInAir % 60 / 100;
 
         // calced turn rate
+        [DisplayFieldName("turnrate.Field")]
         [DisplayText("Turn Rate (speed)")]
+        [GroupText("Position")]
         public float turnrate
         {
             get
@@ -884,19 +1164,21 @@ namespace MissionPlanner
         }
 
         //https://en.wikipedia.org/wiki/Load_factor_(aeronautics)
-        [DisplayText("Turn Gs (load)")] public float turng => (float)(1 / Math.Cos(MathHelper.deg2rad * roll));
+        [DisplayText("Turn Gs (load)")][GroupText("Position")] public float turng => (float)(1 / Math.Cos(MathHelper.deg2rad * roll));
 
         // turn radius
+        [DisplayFieldName("radius.Field")]
         [DisplayText("Turn Radius (dist)")]
+        [GroupText("Position")]
         public float radius
         {
             get
             {
                 if (_groundspeed <= 1) return 0;
-                return (float)(groundspeed * groundspeed / (9.80665 * Math.Tan(roll * MathHelper.deg2rad)));
+                return (float)toDistDisplayUnit(_groundspeed * _groundspeed / (9.80665 * Math.Tan(roll * MathHelper.deg2rad)));
             }
         }
-
+        [GroupText("Position")]
         public float QNH
         {
             get
@@ -913,14 +1195,18 @@ namespace MissionPlanner
             }
         }
 
-        [DisplayText("Wind Direction (Deg)")] public float wind_dir { get; set; }
+        [DisplayFieldName("wind_dir.Field")]
+        [DisplayText("Wind Direction (Deg)")][GroupText("Position")] public float wind_dir { get; set; }
 
-        [DisplayText("Wind Velocity (speed)")] public float wind_vel { get; set; }
+        [DisplayFieldName("wind_vel.Field")]
+        [DisplayText("Wind Velocity (speed)")][GroupText("Position")] public float wind_vel { get; set; }
 
-        public float targetaltd100 => targetalt / 100 % 10;
+        [GroupText("NAV")] public float targetaltd100 => targetalt / 100 % 10;
         [GroupText("NAV")]
         public float targetalt { get; private set; }
 
+        [JsonIgnore]
+        [IgnoreDataMember]
         public List<(DateTime time, string message)> messages { get; set; } = new List<(DateTime, string)>();
 
         /// <summary>
@@ -936,9 +1222,11 @@ namespace MissionPlanner
         /// </summary>
         public string messageHigh
         {
-            get { if (DateTime.Now > _messageHighTime.AddSeconds(10)) return ""; return _messagehigh; }
+            get { if (DateTime.Now > _messageHighTime.AddSeconds(10)) return ""; return _messagehigh.TrimUnPrintable(); }
             set
             {
+                if (value == null || value == "")
+                    return;
                 // check against get
                 if (messageHigh == value)
                     return;
@@ -952,10 +1240,11 @@ namespace MissionPlanner
         string _messagehigh = "";
         DateTime _messageHighTime;
 
-        public MAVLink.MAV_SEVERITY messageHighSeverity { get; set; }
+        [GroupText("Other")] public MAVLink.MAV_SEVERITY messageHighSeverity { get; set; }
 
         //battery
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage.Field")]
         [DisplayText("Bat Voltage (V)")]
         public double battery_voltage
         {
@@ -968,30 +1257,42 @@ namespace MissionPlanner
         }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage3.Field")]
         [DisplayText("Bat Voltage (V)")]
         public double battery_voltage3 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage4.Field")]
         [DisplayText("Bat Voltage (V)")]
         public double battery_voltage4 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage5.Field")]
         [DisplayText("Bat Voltage (V)")]
         public double battery_voltage5 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage6.Field")]
         [DisplayText("Bat Voltage (V)")]
         public double battery_voltage6 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage7.Field")]
         [DisplayText("Bat Voltage (V)")]
         public double battery_voltage7 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage8.Field")]
         [DisplayText("Bat Voltage (V)")]
         public double battery_voltage8 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage9.Field")]
+        [DisplayText("Bat Voltage (V)")]
+        public double battery_voltage9 { get; set; }
+
+        [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining
         {
@@ -1004,34 +1305,47 @@ namespace MissionPlanner
         }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining2.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining2 { get; set; }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining3.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining3 { get; set; }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining4.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining4 { get; set; }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining5.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining5 { get; set; }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining6.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining6 { get; set; }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining7.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining7 { get; set; }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining8.Field")]
         [DisplayText("Bat Remaining (%)")]
         public int battery_remaining8 { get; set; }
 
         [GroupText("Battery")]
+	[DisplayFieldName("battery_remaining9.Field")]
+        [DisplayText("Bat Remaining (%)")]
+        public int battery_remaining9 { get; set; }
+
+        [GroupText("Battery")]
+        [DisplayFieldName("current.Field")]
         [DisplayText("Bat Current (Amps)")]
         public double current
         {
@@ -1053,6 +1367,7 @@ namespace MissionPlanner
         } //current may to be below zero - recuperation in arduplane
 
         [GroupText("Battery")]
+        [DisplayFieldName("current2.Field")]
         [DisplayText("Bat2 Current (Amps)")]
         public double current2
         {
@@ -1068,43 +1383,58 @@ namespace MissionPlanner
         }
 
         [GroupText("Battery")]
-        [DisplayText("Bat2 Current (Amps)")]
+        [DisplayFieldName("current3.Field")]
+        [DisplayText("Bat3 Current (Amps)")]
         public double current3 { get; set; }
 
         [GroupText("Battery")]
-        [DisplayText("Bat2 Current (Amps)")]
+        [DisplayFieldName("current4.Field")]
+        [DisplayText("Bat4 Current (Amps)")]
         public double current4 { get; set; }
 
         [GroupText("Battery")]
-        [DisplayText("Bat2 Current (Amps)")]
+        [DisplayFieldName("current5.Field")]
+        [DisplayText("Bat5 Current (Amps)")]
         public double current5 { get; set; }
 
         [GroupText("Battery")]
-        [DisplayText("Bat2 Current (Amps)")]
+        [DisplayFieldName("current6.Field")]
+        [DisplayText("Bat6 Current (Amps)")]
         public double current6 { get; set; }
 
         [GroupText("Battery")]
-        [DisplayText("Bat2 Current (Amps)")]
+        [DisplayFieldName("current7.Field")]
+        [DisplayText("Bat7 Current (Amps)")]
         public double current7 { get; set; }
 
         [GroupText("Battery")]
-        [DisplayText("Bat2 Current (Amps)")]
+        [DisplayFieldName("current8.Field")]
+        [DisplayText("Bat8 Current (Amps)")]
         public double current8 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("current9.Field")]
+        [DisplayText("Bat9 Current (Amps)")]
+        public double current9 { get; set; }
+
+        [GroupText("Battery")]
+        [DisplayFieldName("watts.Field")]
         [DisplayText("Bat Watts")]
         public double watts => battery_voltage * current;
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_mahperkm.Field")]
         [DisplayText("Bat efficiency (mah/km)")]
         public double battery_mahperkm => battery_usedmah / (distTraveled / 1000.0f);
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_kmleft.Field")]
         [DisplayText("Bat km left EST (km)")]
         public double battery_kmleft => (100.0f / (100.0f - battery_remaining) * battery_usedmah - battery_usedmah) /
                                         battery_mahperkm;
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_usedmah.Field")]
         [DisplayText("Bat used EST (mah)")]
         public double battery_usedmah { get; set; }
 
@@ -1114,8 +1444,34 @@ namespace MissionPlanner
         [GroupText("Battery")] public double battery_cell4 { get; set; }
         [GroupText("Battery")] public double battery_cell5 { get; set; }
         [GroupText("Battery")] public double battery_cell6 { get; set; }
+        [GroupText("Battery")] public double battery_cell7 { get; set; }
+        [GroupText("Battery")] public double battery_cell8 { get; set; }
+        [GroupText("Battery")] public double battery_cell9 { get; set; }
+        [GroupText("Battery")] public double battery_cell10 { get; set; }
+        [GroupText("Battery")] public double battery_cell11 { get; set; }
+        [GroupText("Battery")] public double battery_cell12 { get; set; }
+        [GroupText("Battery")] public double battery_cell13 { get; set; }
+        [GroupText("Battery")] public double battery_cell14 { get; set; }
 
         [GroupText("Battery")] public double battery_temp { get; set; }
+        [GroupText("Battery")] public double battery_temp2 { get; set; }
+        [GroupText("Battery")] public double battery_temp3 { get; set; }
+        [GroupText("Battery")] public double battery_temp4 { get; set; }
+        [GroupText("Battery")] public double battery_temp5 { get; set; }
+        [GroupText("Battery")] public double battery_temp6 { get; set; }
+        [GroupText("Battery")] public double battery_temp7 { get; set; }
+        [GroupText("Battery")] public double battery_temp8 { get; set; }
+        [GroupText("Battery")] public double battery_temp9 { get; set; }
+
+        [GroupText("Battery")] public double battery_remainmin { get; set; }
+        [GroupText("Battery")] public double battery_remainmin2 { get; set; }
+        [GroupText("Battery")] public double battery_remainmin3 { get; set; }
+        [GroupText("Battery")] public double battery_remainmin4 { get; set; }
+        [GroupText("Battery")] public double battery_remainmin5 { get; set; }
+        [GroupText("Battery")] public double battery_remainmin6 { get; set; }
+        [GroupText("Battery")] public double battery_remainmin7 { get; set; }
+        [GroupText("Battery")] public double battery_remainmin8 { get; set; }
+        [GroupText("Battery")] public double battery_remainmin9 { get; set; }
 
         [GroupText("Battery")]
         [DisplayText("Bat used EST (mah)")]
@@ -1145,8 +1501,12 @@ namespace MissionPlanner
         [DisplayText("Bat used EST (mah)")]
         public double battery_usedmah8 { get; set; }
 
+        [GroupText("Battery")]
+        [DisplayText("Bat used EST (mah)")]
+        public double battery_usedmah9 { get; set; }
 
         [GroupText("Battery")]
+        [DisplayFieldName("battery_voltage2.Field")]
         [DisplayText("Bat2 Voltage (V)")]
         public double battery_voltage2
         {
@@ -1183,17 +1543,17 @@ namespace MissionPlanner
         }
 
         [GroupText("Position")]
-        public PointLatLngAlt MovingBase
+        public PointLatLngAlt Base
         {
-            get => _movingbase;
+            get => _base;
             set
             {
                 if (value == null)
-                    _movingbase = new PointLatLngAlt();
+                    _base = new PointLatLngAlt();
 
-                if (_movingbase.Lat != value.Lat || _movingbase.Lng != value.Lng || _movingbase.Alt
+                if (_base.Lat != value.Lat || _base.Lng != value.Lng || _base.Alt
                     != value.Alt)
-                    _movingbase = value;
+                    _base = value;
             }
         }
 
@@ -1211,7 +1571,9 @@ namespace MissionPlanner
         [GroupText("Position")] public PointLatLngAlt Location => new PointLatLngAlt(lat, lng, altasl);
         [GroupText("Position")] public PointLatLngAlt TargetLocation { get; set; } = PointLatLngAlt.Zero;
 
-
+        [JsonIgnore]
+        [IgnoreDataMember]
+        [GroupText("Other")]
         public float GeoFenceDist
         {
             get
@@ -1353,6 +1715,7 @@ namespace MissionPlanner
         }
 
         [GroupText("Position")]
+        [DisplayFieldName("DistToHome.Field")]
         [DisplayText("Dist to Home (dist)")]
         public float DistToHome
         {
@@ -1374,34 +1737,37 @@ namespace MissionPlanner
         }
 
         [GroupText("Position")]
+        [DisplayFieldName("DistFromMovingBase.Field")]
         [DisplayText("Dist to Moving Base (dist)")]
         public float DistFromMovingBase
         {
             get
             {
-                if (lat == 0 && lng == 0 || MovingBase == null)
+                if (lat == 0 && lng == 0 || Base == null)
                     return 0;
 
                 // shrinking factor for longitude going to poles direction
-                var rads = Math.Abs(MovingBase.Lat) * 0.0174532925;
+                var rads = Math.Abs(Base.Lat) * 0.0174532925;
                 var scaleLongDown = Math.Cos(rads);
                 var scaleLongUp = 1.0f / Math.Cos(rads);
 
                 //DST to Home
-                var dstlat = Math.Abs(MovingBase.Lat - lat) * 111319.5;
-                var dstlon = Math.Abs(MovingBase.Lng - lng) * 111319.5 * scaleLongDown;
+                var dstlat = Math.Abs(Base.Lat - lat) * 111319.5;
+                var dstlon = Math.Abs(Base.Lng - lng) * 111319.5 * scaleLongDown;
                 return (float)Math.Sqrt(dstlat * dstlat + dstlon * dstlon) * multiplierdist;
             }
         }
 
+        [DisplayFieldName("ELToMAV.Field")]
         [DisplayText("Elevation to Mav (deg)")]
+        [GroupText("Position")]
         public float ELToMAV
         {
             get
             {
                 var dist = DistToHome / multiplierdist;
 
-                if (dist < 5)
+                if (dist == 0)
                     return 0;
 
                 var altdiff = (float)(_altasl - TrackerLocation.Alt);
@@ -1412,7 +1778,9 @@ namespace MissionPlanner
             }
         }
 
+        [DisplayFieldName("AZToMAV.Field")]
         [DisplayText("Bearing to Mav (deg)")]
+        [GroupText("Position")]
         public float AZToMAV
         {
             get
@@ -1427,54 +1795,68 @@ namespace MissionPlanner
                 var dstlat = (TrackerLocation.Lat - lat) * scaleLongUp; //OffSet Y
                 var bearing = 90 + Math.Atan2(dstlat, -dstlon) * 57.295775; //absolut home direction
                 if (bearing < 0) bearing += 360; //normalization
-                //bearing = bearing - 180;//absolut return direction
-                //if (bearing < 0) bearing += 360;//normalization
+                                                 //bearing = bearing - 180;//absolut return direction
+                                                 //if (bearing < 0) bearing += 360;//normalization
 
                 var dist = DistToHome / multiplierdist;
 
-                if (dist < 5)
+                if (dist == 0)
                     return 0;
 
                 return (float)bearing;
             }
         }
 
-        [DisplayText("Sonar Range (meters)")]
+        [DisplayFieldName("sonarrange.Field")]
+        [DisplayText("Sonar Range (alt)")]
+        [GroupText("Sensor")]
         public float sonarrange
         {
-            get => (float)toDistDisplayUnit(_sonarrange);
+            get => (float)toAltDisplayUnit(_sonarrange);
             set => _sonarrange = value;
         }
 
-        [DisplayText("Sonar Voltage (Volt)")] public float sonarvoltage { get; set; }
+        [DisplayFieldName("sonarvoltage.Field")]
+        [DisplayText("Sonar Voltage (Volt)")][GroupText("Sensor")] public float sonarvoltage { get; set; }
 
-        [DisplayText("RangeFinder1 (cm)")] public uint rangefinder1 { get; set; }
+        [DisplayText("RangeFinder1 (cm)")][GroupText("Sensor")] public uint rangefinder1 { get; set; }
+        [DisplayText("RangeFinder2 (cm)")][GroupText("Sensor")] public uint rangefinder2 { get; set; }
+        [DisplayText("RangeFinder3 (cm)")][GroupText("Sensor")] public uint rangefinder3 { get; set; }
+        [DisplayText("RangeFinder4 (cm)")][GroupText("Sensor")] public uint rangefinder4 { get; set; }
+        [DisplayText("RangeFinder5 (cm)")][GroupText("Sensor")] public uint rangefinder5 { get; set; }
+        [DisplayText("RangeFinder6 (cm)")][GroupText("Sensor")] public uint rangefinder6 { get; set; }
+        [DisplayText("RangeFinder7 (cm)")][GroupText("Sensor")] public uint rangefinder7 { get; set; }
+        [DisplayText("RangeFinder8 (cm)")][GroupText("Sensor")] public uint rangefinder8 { get; set; }
+        [DisplayText("RangeFinder9 (cm)")][GroupText("Sensor")] public uint rangefinder9 { get; set; }
+        [DisplayText("RangeFinder10 (cm)")][GroupText("Sensor")] public uint rangefinder10 { get; set; }
 
-        [DisplayText("RangeFinder2 (cm)")] public uint rangefinder2 { get; set; }
 
-        [DisplayText("RangeFinder3 (cm)")] public uint rangefinder3 { get; set; }
-
+        [GroupText("Software")]
         public float freemem { get; set; }
-        public float load { get; set; }
-        public float brklevel { get; set; }
-        public bool armed { get; set; }
+        [GroupText("Software")] public float load { get; set; }
+        [GroupText("Software")] public float brklevel { get; set; }
+        [GroupText("Software")] public bool armed { get; set; }
 
         // Sik radio
         [GroupText("Telem")]
+        [DisplayFieldName("rssi.Field")]
         [DisplayText("Sik Radio rssi")]
         public float rssi { get; set; }
 
         [GroupText("Telem")]
+        [DisplayFieldName("remrssi.Field")]
         [DisplayText("Sik Radio remote rssi")]
         public float remrssi { get; set; }
 
         [GroupText("Telem")] public byte txbuffer { get; set; }
 
         [GroupText("Telem")]
+        [DisplayFieldName("noise.Field")]
         [DisplayText("Sik Radio noise")]
         public float noise { get; set; }
 
         [GroupText("Telem")]
+        [DisplayFieldName("remnoise.Field")]
         [DisplayText("Sik Radio remote noise")]
         public float remnoise { get; set; }
 
@@ -1482,6 +1864,7 @@ namespace MissionPlanner
         [GroupText("Telem")] public ushort fixedp { get; set; }
 
         [GroupText("Telem")]
+        [DisplayFieldName("localsnrdb.Field")]
         [DisplayText("Sik Radio snr")]
         public float localsnrdb
         {
@@ -1495,6 +1878,7 @@ namespace MissionPlanner
         }
 
         [GroupText("Telem")]
+        [DisplayFieldName("remotesnrdb.Field")]
         [DisplayText("Sik Radio remote snr")]
         public float remotesnrdb
         {
@@ -1508,6 +1892,7 @@ namespace MissionPlanner
         }
 
         [GroupText("Telem")]
+        [DisplayFieldName("DistRSSIRemain.Field")]
         [DisplayText("Sik Radio est dist (m)")]
         public float DistRSSIRemain
         {
@@ -1535,26 +1920,31 @@ namespace MissionPlanner
         }
 
         // stats
-        public ushort packetdropremote { get; set; }
-        public ushort linkqualitygcs { get; set; }
+        [GroupText("Telem")] public ushort packetdropremote { get; set; }
+        [GroupText("Telem")] public ushort linkqualitygcs { get; set; }
 
-        [DisplayText("Error Type")] public ushort errors_count1 { get; set; }
+        [DisplayText("Error Type")][GroupText("Hardware")] public ushort errors_count1 { get; set; }
 
-        [DisplayText("Error Type")] public ushort errors_count2 { get; set; }
-        public ushort errors_count3 { get; set; }
+        [DisplayText("Error Type")][GroupText("Hardware")] public ushort errors_count2 { get; set; }
+        [DisplayText("Error Type")][GroupText("Hardware")] public ushort errors_count3 { get; set; }
 
-        [DisplayText("Error Count")] public ushort errors_count4 { get; set; }
+        [DisplayText("Error Count")][GroupText("Hardware")] public ushort errors_count4 { get; set; }
 
-        [DisplayText("HW Voltage")] public float hwvoltage { get; set; }
+        [DisplayFieldName("hwvoltage.Field")]
+        [DisplayText("HW Voltage")][GroupText("Hardware")] public float hwvoltage { get; set; }
 
-        [DisplayText("Board Voltage")] public float boardvoltage { get; set; }
+        [DisplayFieldName("boardvoltage.Field")]
+        [DisplayText("Board Voltage")][GroupText("Hardware")] public float boardvoltage { get; set; }
 
-        [DisplayText("Servo Rail Voltage")] public float servovoltage { get; set; }
+        [DisplayFieldName("servovoltage.Field")]
+        [DisplayText("Servo Rail Voltage")][GroupText("Hardware")] public float servovoltage { get; set; }
 
-        [DisplayText("Voltage Flags")] public uint voltageflag { get; set; }
+        [DisplayFieldName("voltageflag.Field")]
+        [DisplayText("Voltage Flags")][GroupText("Hardware")] public uint voltageflag { get; set; }
 
-        public ushort i2cerrors { get; set; }
+        [GroupText("Hardware")] public ushort i2cerrors { get; set; }
 
+        [GroupText("Other")]
         public double timesincelastshot { get; set; }
 
         // pressure
@@ -1563,26 +1953,12 @@ namespace MissionPlanner
         [GroupText("Sensor")] public float press_abs2 { get; set; }
         [GroupText("Sensor")] public int press_temp2 { get; set; }
 
-        // sensor offsets
-        [GroupText("Calibration")] public int mag_ofs_x { get; set; }
-        [GroupText("Calibration")] public int mag_ofs_y { get; set; }
-        [GroupText("Calibration")] public int mag_ofs_z { get; set; }
-        [GroupText("Calibration")] public float mag_declination { get; set; }
-        [GroupText("Calibration")] public int raw_press { get; set; }
-        [GroupText("Calibration")] public int raw_temp { get; set; }
-        [GroupText("Calibration")] public float gyro_cal_x { get; set; }
-        [GroupText("Calibration")] public float gyro_cal_y { get; set; }
-        [GroupText("Calibration")] public float gyro_cal_z { get; set; }
-        [GroupText("Calibration")] public float accel_cal_x { get; set; }
-        [GroupText("Calibration")] public float accel_cal_y { get; set; }
-        [GroupText("Calibration")] public float accel_cal_z { get; set; }
-
         // requested stream rates
-        public int rateattitude { get; set; }
-        public int rateposition { get; set; }
-        public int ratestatus { get; set; }
-        public int ratesensors { get; set; }
-        public int raterc { get; set; }
+        [GroupText("Telem")] public int rateattitude { get; set; }
+        [GroupText("Telem")] public int rateposition { get; set; }
+        [GroupText("Telem")] public int ratestatus { get; set; }
+        [GroupText("Telem")] public int ratesensors { get; set; }
+        [GroupText("Telem")] public int raterc { get; set; }
 
         // reference
         public DateTime datetime { get; set; }
@@ -1591,14 +1967,15 @@ namespace MissionPlanner
                                  parent.parent.logreadmode;
 
 
-        public float campointa { get; set; }
+        [GroupText("Mount")] public float campointa { get; set; }
 
-        public float campointb { get; set; }
+        [GroupText("Mount")] public float campointb { get; set; }
 
-        public float campointc { get; set; }
+        [GroupText("Mount")] public float campointc { get; set; }
 
-        public PointLatLngAlt GimbalPoint { get; set; }
+        [GroupText("Mount")] public PointLatLngAlt GimbalPoint { get; set; }
 
+        [GroupText("Mount")]
         public float gimballat
         {
             get
@@ -1608,6 +1985,7 @@ namespace MissionPlanner
             }
         }
 
+        [GroupText("Mount")]
         public float gimballng
         {
             get
@@ -1618,7 +1996,9 @@ namespace MissionPlanner
         }
 
 
-        public bool landed { get; set; }
+        [GroupText("Software")] public bool landed { get; set; }
+
+        [GroupText("Software")] public bool safetyactive { get; set; }
 
         [GroupText("Terrain")] public bool terrainactive { get; set; }
 
@@ -1644,17 +2024,23 @@ namespace MissionPlanner
 
         [GroupText("Terrain")] public float ter_space { get; set; }
 
+        [GroupText("Enviromental")]
         public int KIndex => KIndexstatic;
 
-        [GroupText("Flow")] [DisplayText("flow_comp_m_x")] public float opt_m_x { get; set; }
+        [DisplayFieldName("opt_m_x.Field")]
+        [GroupText("Flow")][DisplayText("flow_comp_m_x")] public float opt_m_x { get; set; }
 
-        [GroupText("Flow")] [DisplayText("flow_comp_m_y")] public float opt_m_y { get; set; }
+        [DisplayFieldName("opt_m_y.Field")]
+        [GroupText("Flow")][DisplayText("flow_comp_m_y")] public float opt_m_y { get; set; }
 
-        [GroupText("Flow")] [DisplayText("flow_x")] public short opt_x { get; set; }
+        [DisplayFieldName("opt_x.Field")]
+        [GroupText("Flow")][DisplayText("flow_x")] public short opt_x { get; set; }
 
-        [GroupText("Flow")] [DisplayText("flow_y")] public short opt_y { get; set; }
+        [DisplayFieldName("opt_y.Field")]
+        [GroupText("Flow")][DisplayText("flow_y")] public short opt_y { get; set; }
 
-        [GroupText("Flow")] [DisplayText("flow quality")] public byte opt_qua { get; set; }
+        [DisplayFieldName("opt_qua.Field")]
+        [GroupText("Flow")][DisplayText("flow quality")] public byte opt_qua { get; set; }
 
         [GroupText("EKF")] public float ekfstatus { get; set; }
 
@@ -1684,30 +2070,47 @@ namespace MissionPlanner
 
         [GroupText("PID")] public float pidachieved { get; set; }
 
-        public uint vibeclip0 { get; set; }
+        [GroupText("PID")] public float pidSRate { get; set; }
 
-        public uint vibeclip1 { get; set; }
+        [GroupText("PID")] public float pidPDmod { get; set; }
 
-        public uint vibeclip2 { get; set; }
+        [GroupText("PID")] public float pidSRateRoll { get; set; }
 
-        public float vibex { get; set; }
+        [GroupText("PID")] public float pidSRatePitch { get; set; }
 
-        public float vibey { get; set; }
+        [GroupText("PID")] public float pidSRateYaw { get; set; }
 
-        public float vibez { get; set; }
+        [GroupText("PID")] public float pidSRateAccZ { get; set; }
 
-        public Version version { get; set; }
+        [GroupText("PID")] public float pidSRateSteer { get; set; }
+        
+        [GroupText("PID")] public float pidSRateLanding { get; set; }
 
-        public float rpm1 { get; set; }
+        [GroupText("Vibe")] public uint vibeclip0 { get; set; }
 
-        public float rpm2 { get; set; }
+        [GroupText("Vibe")] public uint vibeclip1 { get; set; }
 
-        public uint capabilities { get; set; }
+        [GroupText("Vibe")] public uint vibeclip2 { get; set; }
 
-        public float speedup { get; set; }
+        [GroupText("Vibe")] public float vibex { get; set; }
 
-        public byte vtol_state { get; private set; }
-        public byte landed_state { get; private set; }
+        [GroupText("Vibe")] public float vibey { get; set; }
+
+        [GroupText("Vibe")] public float vibez { get; set; }
+
+        [GroupText("Software")] public Version version { get; set; }
+        [GroupText("Software")] public ulong uid { get; set; }
+        [GroupText("Software")] public string uid2 { get; set; }
+        [GroupText("Sensor")] public float rpm1 { get; set; }
+
+        [GroupText("Sensor")] public float rpm2 { get; set; }
+
+        [GroupText("Software")] public uint capabilities { get; set; }
+
+        [GroupText("Software")] public float speedup { get; set; }
+
+        [GroupText("Software")] public byte vtol_state { get; private set; }
+        [GroupText("Software")] public byte landed_state { get; private set; }
         [GroupText("Generator")]
         public float gen_status { get; set; }
         [GroupText("Generator")]
@@ -1721,6 +2124,106 @@ namespace MissionPlanner
         [GroupText("Generator")]
         public int gen_maint_time { get; set; }
 
+        [GroupText("EFI")]
+        [DisplayFieldNameAttribute("efi_baro.Field")]
+        [DisplayText("EFI Baro Pressure (kPa)")]
+        public float efi_baro { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_headtemp.Field")]
+        [DisplayText("EFI Head Temp (C)")]
+        public float efi_headtemp { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_load.Field")]
+        [DisplayText("EFI Load (%)")]
+        public float efi_load { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_health.Field")]
+        [DisplayText("EFI Health")]
+        public byte efi_health { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldNameAttribute("efi_exhasttemp.Field")]
+        [DisplayText("EFI Exhast Temp (C)")]
+        public float efi_exhasttemp { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_intaketemp.Field")]
+        [DisplayText("EFI Intake Temp (C)")]
+        public float efi_intaketemp { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_rpm.Field")]
+        [DisplayText("EFI rpm")]
+        public float efi_rpm { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_fuelflow.Field")]
+        [DisplayText("EFI Fuel Flow (g/min)")]
+        public float efi_fuelflow { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_fuelconsumed.Field")]
+        [DisplayText("EFI Fuel Consumed (g)")]
+        public float efi_fuelconsumed { get; private set; }
+        [GroupText("EFI")]
+        [DisplayFieldName("efi_fuelpressure.Field")]
+        [DisplayText("EFI Fuel Pressure (kPa)")]
+        public float efi_fuelpressure { get; private set; }
+
+        [GroupText("Transponder Status")]
+        [DisplayText("Transponder 1090ES Tx Enabled")]
+        public bool xpdr_es1090_tx_enabled { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Transponder Mode S Reply Enabled")]
+        public bool xpdr_mode_S_enabled { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Transponder Mode C Reply Enabled")]
+        public bool xpdr_mode_C_enabled { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Transponder Mode A Reply Enabled")]
+        public bool xpdr_mode_A_enabled { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Ident Active")]
+        public bool xpdr_ident_active { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("X-bit Status")]
+        public bool xpdr_x_bit_status { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Interrogated since last")]
+        public bool xpdr_interrogated_since_last { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Airborne")]
+        public bool xpdr_airborne_status { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Transponder Mode A squawk code")]
+        public ushort xpdr_mode_A_squawk_code { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("NIC")]
+        public byte xpdr_nic { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("NACp")]
+        public byte xpdr_nacp { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Board Temperature in C")]
+        public byte xpdr_board_temperature { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Maintainence Required")]
+        public bool xpdr_maint_req { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("ADSB Tx System Failure")]
+        public bool xpdr_adsb_tx_sys_fail { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("GPS Unavailable")]
+        public bool xpdr_gps_unavail { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("GPS No Fix")]
+        public bool xpdr_gps_no_fix { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Ping200X No Status Message Recieved")]
+        public bool xpdr_status_unavail { get; private set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Status Update Pending")]
+        public bool xpdr_status_pending { get; set; }
+        [GroupText("Transponder Status")]
+        [DisplayText("Callsign/Flight ID")]
+        public byte[] xpdr_flight_id { get; set; }
+
+
         public object Clone()
         {
             return MemberwiseClone();
@@ -1730,7 +2233,11 @@ namespace MissionPlanner
         {
             if (mavLinkMessage.sysid == parent.sysid && mavLinkMessage.compid == parent.compid
                 || mavLinkMessage.msgid == (uint)MAVLink.MAVLINK_MSG_ID.RADIO // propagate the RADIO/RADIO_STATUS message across all devices on this link
-                || mavLinkMessage.msgid == (uint)MAVLink.MAVLINK_MSG_ID.RADIO_STATUS)
+                || mavLinkMessage.msgid == (uint)MAVLink.MAVLINK_MSG_ID.RADIO_STATUS
+                || ( mavLinkMessage.sysid == parent.sysid                      // Propagate NAMED_VALUE_FLOAT messages across all components within the same device
+                     && mavLinkMessage.msgid == (uint)MAVLink.MAVLINK_MSG_ID.NAMED_VALUE_FLOAT
+                     && Settings.Instance.GetBoolean("propagateNamedFloats", true)) )
+
             {
                 switch (mavLinkMessage.msgid)
                 {
@@ -1763,9 +2270,9 @@ namespace MissionPlanner
 
                             var loc = HomeLocation.gps_offset(lpned.y, lpned.x);
 
-                            //lat = loc.Lat;
-                            //lng = loc.Lng;
-                            //alt = (float)(loc.Alt + lpned.z);
+                            posn = lpned.x;
+                            pose = lpned.y;
+                            posd = lpned.z;
                         }
 
                         break;
@@ -1803,6 +2310,9 @@ namespace MissionPlanner
 
                             this.version = new Version(main, sub, rev, (int)type);
 
+                            this.uid = version.uid;
+                            this.uid2 = version.uid2.ToHexString();
+
                             try
                             {
                                 capabilities = (uint)(MAVLink.MAV_PROTOCOL_CAPABILITY)version.capabilities;
@@ -1813,36 +2323,22 @@ namespace MissionPlanner
                             catch
                             {
                             }
-
-                            Serial.print("Flight SW Version: ");
-                            Serial.println(version.flight_sw_version);
-                            Serial.print("Middleware SW: ");
-                            Serial.println(version.middleware_sw_version);
-                            Serial.print("OS Custom: ");
-                            Serial.println(version.os_custom_version);
-                            Serial.print("OS SW: ");
-                            Serial.println(version.os_sw_version);
-                            Serial.print("board_version: ");
-                            Serial.println(version.board_version);
-                            Serial.print("Vendor ID: ");
-                            Serial.println(version.vendor_id);
-                            Serial.print("Product ID: ");
-                            Serial.println(version.product_id);
-                            Serial.print("Board Version: ");
-                            Serial.println(version.board_version);
                         }
 
                         break;
                     case (uint)MAVLink.MAVLINK_MSG_ID.FENCE_STATUS:
-
-
                         {
                             var fence = mavLinkMessage.ToStructure<MAVLink.mavlink_fence_status_t>();
 
-                            if (fence.breach_status != (byte)MAVLink.FENCE_BREACH.NONE)
+                            fenceb_type = fence.breach_type;
+                            fenceb_status = fence.breach_status;
+                            fenceb_count = fence.breach_count;
+
+
+                            if (fence.breach_status != 0)
                             {
                                 // fence breached
-                                messageHigh = "Fence Breach";
+                                messageHigh = "Fence Breach " + (MAVLink.FENCE_BREACH)fence.breach_type;
                             }
                         }
 
@@ -1905,10 +2401,87 @@ namespace MissionPlanner
                             gpsstatus = highlatency.gps_fix_type;
                             battery_remaining = highlatency.battery_remaining;
                             press_temp = highlatency.temperature;
-                            raw_temp = highlatency.temperature_air;
+                            airspeed1_temp = highlatency.temperature_air;
                             failsafe = highlatency.failsafe > 0;
                             wpno = highlatency.wp_num;
                             wp_dist = highlatency.wp_distance;
+                        }
+
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.HIGH_LATENCY2:
+                        {
+                            var highlatency = mavLinkMessage.ToStructure<MAVLink.mavlink_high_latency2_t>();
+
+                            {
+                                var modelist = Common.getModesList(firmware);
+
+                                if (modelist != null)
+                                {
+                                    var found = false;
+
+                                    foreach (var pair in modelist)
+                                        if (pair.Key == highlatency.custom_mode)
+                                        {
+                                            mode = pair.Value;
+                                            _mode = highlatency.custom_mode;
+                                            found = true;
+                                            break;
+                                        }
+
+                                    if (!found)
+                                        log.Warn("Mode not found cm:" +
+                                                 highlatency.custom_mode);
+                                }
+                            }
+
+                            lat = highlatency.latitude / 1e7;
+                            lng = highlatency.longitude / 1e7;
+                            //custom_mode
+                            altasl = highlatency.altitude;
+                            alt = altasl - (float)HomeAlt;
+                            alt_error = highlatency.target_altitude - alt;
+                            targetalt = highlatency.target_altitude;
+                            wp_dist = highlatency.target_distance * 10;
+                            wpno = highlatency.wp_num;
+
+                            if (highlatency.failure_flags != 0)
+                            {
+                                var flags = highlatency.failure_flags;
+
+                                var errors = "";
+
+                                for (var a = 1; a <= (int)MAVLink.HL_FAILURE_FLAG.MISSION; a = a << 1)
+                                {
+                                    var currentbit = flags & a;
+                                    if (currentbit == 1)
+                                    {
+                                        var currentflag =
+                                            (MAVLink.HL_FAILURE_FLAG)
+                                            Enum.Parse(typeof(MAVLink.HL_FAILURE_FLAG), a.ToString());
+
+                                        errors += currentflag + " ";
+                                    }
+                                }
+
+                                if (errors != "")
+                                    messageHigh = Strings.ERROR + " " + errors;
+
+                            }
+
+                            yaw = highlatency.heading * 2;
+                            target_bearing = highlatency.target_heading * 2;
+                            ch3percent = highlatency.throttle;
+                            airspeed = highlatency.airspeed / 5.0f;
+                            targetairspeed = highlatency.airspeed_sp / 5.0f;
+                            groundspeed = highlatency.groundspeed / 5.0f;
+                            wind_vel = highlatency.windspeed / 5.0f;
+                            wind_dir = highlatency.wind_heading * 2;
+                            gpshdop = highlatency.eph;
+                            // epv
+                            airspeed1_temp = highlatency.temperature_air;
+                            climbrate = highlatency.climb_rate * 10;
+                            battery_remaining = highlatency.battery;
+
                         }
 
                         break;
@@ -2068,17 +2641,14 @@ namespace MissionPlanner
                                     {
                                         case MAVLink.EKF_STATUS_FLAGS.EKF_ATTITUDE: // step 1
                                             ekfstatus = 1;
-                                            log.Info("EKF red has no EKF_ATTITUDE - " +
-                                                     (MAVLink.EKF_STATUS_FLAGS)ekfstatusm.flags);
+                                            //log.Info("EKF red has no EKF_ATTITUDE - " + (MAVLink.EKF_STATUS_FLAGS)ekfstatusm.flags);
                                             break;
                                         case MAVLink.EKF_STATUS_FLAGS.EKF_VELOCITY_HORIZ: // with pos
                                             if (gpsstatus > 0)
                                             {
                                                 // we have gps and dont have vel_hoz
                                                 ekfstatus = 1;
-                                                log.Info(
-                                                    "EKF red has gps lock but no EKF_ATTITUDE and EKF_VELOCITY_HORIZ - " +
-                                                    (MAVLink.EKF_STATUS_FLAGS)ekfstatusm.flags);
+                                                //log.Debug("EKF red has gps lock but no EKF_ATTITUDE and EKF_VELOCITY_HORIZ - " + (MAVLink.EKF_STATUS_FLAGS)ekfstatusm.flags);
                                             }
 
                                             break;
@@ -2122,13 +2692,46 @@ namespace MissionPlanner
 
                         {
                             var sonar = mavLinkMessage.ToStructure<MAVLink.mavlink_distance_sensor_t>();
-                            if (sonar.id == 0)
-                                rangefinder1 = sonar.current_distance;
-                            else if (sonar.id == 1)
-                                rangefinder2 = sonar.current_distance;
+                            if (sonar.id == 0) rangefinder1 = sonar.current_distance;
+                            else if (sonar.id == 1) rangefinder2 = sonar.current_distance;
                             else if (sonar.id == 2) rangefinder3 = sonar.current_distance;
+                            else if (sonar.id == 3) rangefinder4 = sonar.current_distance;
+                            else if (sonar.id == 4) rangefinder5 = sonar.current_distance;
+                            else if (sonar.id == 5) rangefinder6 = sonar.current_distance;
+                            else if (sonar.id == 6) rangefinder7 = sonar.current_distance;
+                            else if (sonar.id == 7) rangefinder8 = sonar.current_distance;
+                            else if (sonar.id == 8) rangefinder9 = sonar.current_distance;
+                            else if (sonar.id == 9) rangefinder10 = sonar.current_distance;
                         }
 
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.EFI_STATUS:
+
+                        {
+                            var efi = mavLinkMessage.ToStructure<MAVLink.mavlink_efi_status_t>();
+
+                            if (efi.ecu_index == 0)
+                            {
+                                efi_baro = efi.barometric_pressure;
+                                efi_headtemp = efi.cylinder_head_temperature;
+                                efi_load = efi.engine_load;
+                                efi_health = efi.health;
+                                efi_exhasttemp = efi.exhaust_gas_temperature;
+                                efi_intaketemp = efi.intake_manifold_temperature;
+                                efi_rpm = efi.rpm;
+                                efi_fuelflow = efi.fuel_flow;
+                                efi_fuelconsumed = efi.fuel_consumed;
+                                // A value of exactly zero indicates that fuel pressure is not supported
+                                if (efi.fuel_pressure == 0)
+                                {
+                                    efi_fuelpressure = -1;
+                                }
+                                else
+                                {
+                                    efi_fuelpressure = efi.fuel_pressure;
+                                }
+                            }
+                        }
                         break;
                     case (uint)MAVLink.MAVLINK_MSG_ID.POWER_STATUS:
 
@@ -2142,11 +2745,11 @@ namespace MissionPlanner
                             {
                                 voltageflag = (uint)(MAVLink.MAV_POWER_STATUS)power.flags;
 
-                                if(voltageflag == (uint)MAVLink.MAV_POWER_STATUS.PERIPH_OVERCURRENT)
+                                if (voltageflag == (uint)MAVLink.MAV_POWER_STATUS.PERIPH_OVERCURRENT)
                                 {
                                     messageHigh = "PERIPH_OVERCURRENT";
-                                } 
-                                else if(voltageflag == (uint)MAVLink.MAV_POWER_STATUS.PERIPH_HIPOWER_OVERCURRENT)
+                                }
+                                else if (voltageflag == (uint)MAVLink.MAV_POWER_STATUS.PERIPH_HIPOWER_OVERCURRENT)
                                 {
                                     messageHigh = "PERIPH_HIPOWER_OVERCURRENT";
                                 }
@@ -2183,13 +2786,21 @@ namespace MissionPlanner
                             }
                             else
                             {
-                                armed = (hb.base_mode & (byte)MAVLink.MAV_MODE_FLAG.SAFETY_ARMED) ==
+                                var newarmed = (hb.base_mode & (byte)MAVLink.MAV_MODE_FLAG.SAFETY_ARMED) ==
                                         (byte)MAVLink.MAV_MODE_FLAG.SAFETY_ARMED;
+
+                                // reset state on armed state change
+                                if (armed == false && newarmed == true)
+                                {
+                                    timeSinceArmInAir = 0;
+                                }
+
+                                armed = newarmed;
 
                                 // saftey switch
                                 if (armed && sensors_enabled.motor_control == false && sensors_enabled.seen)
                                 {
-                                    messageHigh = "(SAFE)";
+                                    messageHigh = "(SAFETY)";
                                 }
 
                                 // for future use
@@ -2228,8 +2839,10 @@ namespace MissionPlanner
                                 try
                                 {
                                     if (oldmode != mode && Speech != null && Speech.speechEnable &&
+                                        parent?.parent?.speechenabled == true &&
                                         parent?.parent?.MAV?.cs == this &&
-                                        Settings.Instance.GetBoolean("speechmodeenabled"))
+                                        Settings.Instance.GetBoolean("speechmodeenabled") &&
+                                        (armed || !Settings.Instance.GetBoolean("speech_armed_only")))
                                         Speech.SpeakAsync(Common.speechConversion(parent,
                                             "" + Settings.Instance["speechmode"]));
                                 }
@@ -2249,7 +2862,6 @@ namespace MissionPlanner
 
                             load = sysstatus.load / 10.0f;
 
-                            battery_voltage = sysstatus.voltage_battery / 1000.0f;
                             battery_remaining = sysstatus.battery_remaining;
                             current = sysstatus.current_battery / 100.0f;
 
@@ -2266,6 +2878,8 @@ namespace MissionPlanner
                             sensors_present.Value = sysstatus.onboard_control_sensors_present;
 
                             terrainactive = sensors_health.terrain && sensors_enabled.terrain && sensors_present.terrain;
+
+                            safetyactive = !sensors_enabled.motor_control;
 
                             if (errors_count1 > 0 || errors_count2 > 0)
                             {
@@ -2349,6 +2963,10 @@ namespace MissionPlanner
                             {
                                 messageHigh = Strings.Bad_SatCom;
                             }
+                            else if (!sensors_health.differential_pressure && sensors_enabled.differential_pressure && sensors_present.differential_pressure)
+                            {
+                                messageHigh = Strings.BadAirspeed;
+                            }
                         }
 
                         break;
@@ -2366,7 +2984,6 @@ namespace MissionPlanner
 
                         {
                             var bat = mavLinkMessage.ToStructure<MAVLink.mavlink_battery2_t>();
-                            _battery_voltage2 = bat.voltage / 1000.0f;
                             current2 = bat.current_battery / 100.0f;
                         }
 
@@ -2375,6 +2992,11 @@ namespace MissionPlanner
 
                         {
                             var bats = mavLinkMessage.ToStructure<MAVLink.mavlink_battery_status_t>();
+
+                            // Compute the total battery system voltage by adding up all the individual cells
+                            // This is used due to the 65.536V max. voltage limitation of sysstatus.battery_voltage and battery_status.voltage
+                            // This is available even if the montior type doesn't support cell monitoring
+                            double temp_battery_voltage = bats.voltages.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0) + bats.voltages_ext.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0);
 
                             if (bats.id == 0)
                             {
@@ -2391,61 +3013,111 @@ namespace MissionPlanner
                                     else battery_cell5 = 0.0;
                                     if (bats.voltages[5] != ushort.MaxValue) battery_cell6 = bats.voltages[5] / 1000.0;
                                     else battery_cell6 = 0.0;
+                                    if (bats.voltages[6] != ushort.MaxValue) battery_cell7 = bats.voltages[6] / 1000.0;
+                                    else battery_cell7 = 0.0;
+                                    if (bats.voltages[7] != ushort.MaxValue) battery_cell8 = bats.voltages[7] / 1000.0;
+                                    else battery_cell8 = 0.0;
+                                    if (bats.voltages[8] != ushort.MaxValue) battery_cell9 = bats.voltages[8] / 1000.0;
+                                    else battery_cell9 = 0.0;
+                                    if (bats.voltages[9] != ushort.MaxValue) battery_cell10 = bats.voltages[9] / 1000.0;
+                                    else battery_cell10 = 0.0;
+                                    if (bats.voltages_ext[0] != ushort.MaxValue) battery_cell11 = bats.voltages_ext[0] / 1000.0;
+                                    else battery_cell11 = 0.0;
+                                    if (bats.voltages_ext[1] != ushort.MaxValue) battery_cell12 = bats.voltages_ext[1] / 1000.0;
+                                    else battery_cell12 = 0.0;
+                                    if (bats.voltages_ext[2] != ushort.MaxValue) battery_cell13 = bats.voltages_ext[2] / 1000.0;
+                                    else battery_cell13 = 0.0;
+                                    if (bats.voltages_ext[3] != ushort.MaxValue) battery_cell14 = bats.voltages_ext[3] / 1000.0;
+                                    else battery_cell14 = 0.0;
                                 }
 
                                 battery_usedmah = bats.current_consumed;
                                 battery_remaining = bats.battery_remaining;
+                                battery_voltage = temp_battery_voltage;
                                 _current = bats.current_battery / 100.0f;
                                 if (bats.temperature != short.MaxValue)
                                     battery_temp = bats.temperature / 100.0;
+                                battery_remainmin = bats.time_remaining / 60.0f;
                             }
                             else if (bats.id == 1)
                             {
                                 battery_usedmah2 = bats.current_consumed;
                                 battery_remaining2 = bats.battery_remaining;
+                                battery_voltage2 = temp_battery_voltage;
                                 _current2 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp2 = bats.temperature / 100.0;
+                                battery_remainmin2 = bats.time_remaining / 60.0f;
                             }
                             else if (bats.id == 2)
                             {
                                 battery_usedmah3 = bats.current_consumed;
                                 battery_remaining3 = bats.battery_remaining;
-                                battery_voltage3 = bats.voltages.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0);
+                                battery_voltage3 = temp_battery_voltage;
                                 current3 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp3 = bats.temperature / 100.0;
+                                battery_remainmin3 = bats.time_remaining / 60.0f;
                             }
                             else if (bats.id == 3)
                             {
                                 battery_usedmah4 = bats.current_consumed;
                                 battery_remaining4 = bats.battery_remaining;
-                                battery_voltage4 = bats.voltages.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0);
+                                battery_voltage4 = temp_battery_voltage;
                                 current4 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp4 = bats.temperature / 100.0;
+                                battery_remainmin4 = bats.time_remaining / 60.0f;
                             }
                             else if (bats.id == 4)
                             {
                                 battery_usedmah5 = bats.current_consumed;
                                 battery_remaining5 = bats.battery_remaining;
-                                battery_voltage5 = bats.voltages.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0);
+                                battery_voltage5 = temp_battery_voltage;
                                 current5 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp5 = bats.temperature / 100.0;
+                                battery_remainmin5 = bats.time_remaining / 60.0f;
                             }
                             else if (bats.id == 5)
                             {
                                 battery_usedmah6 = bats.current_consumed;
                                 battery_remaining6 = bats.battery_remaining;
-                                battery_voltage6 = bats.voltages.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0);
+                                battery_voltage6 = temp_battery_voltage;
                                 current6 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp6 = bats.temperature / 100.0;
+                                battery_remainmin6 = bats.time_remaining / 60.0f;
                             }
                             else if (bats.id == 6)
                             {
                                 battery_usedmah7 = bats.current_consumed;
                                 battery_remaining7 = bats.battery_remaining;
-                                battery_voltage7 = bats.voltages.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0);
+                                battery_voltage7 = temp_battery_voltage;
                                 current7 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp7 = bats.temperature / 100.0;
+                                battery_remainmin7 = bats.time_remaining / 60.0f;
                             }
                             else if (bats.id == 7)
                             {
                                 battery_usedmah8 = bats.current_consumed;
                                 battery_remaining8 = bats.battery_remaining;
-                                battery_voltage8 = bats.voltages.Sum(a => a != ushort.MaxValue ? a / 1000.0 : 0);
+                                battery_voltage8 = temp_battery_voltage;
                                 current8 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp8 = bats.temperature / 100.0;
+                                battery_remainmin8 = bats.time_remaining / 60.0f;
+                            }
+                            else if (bats.id == 8)
+                            {
+                                battery_usedmah9 = bats.current_consumed;
+                                battery_remaining9 = bats.battery_remaining;
+                                battery_voltage9 = temp_battery_voltage;
+                                current9 = bats.current_battery / 100.0f;
+                                if (bats.temperature != short.MaxValue)
+                                    battery_temp9 = bats.temperature / 100.0;
+                                battery_remainmin9 = bats.time_remaining / 60.0f;
                             }
                         }
 
@@ -2456,6 +3128,8 @@ namespace MissionPlanner
                             var pres = mavLinkMessage.ToStructure<MAVLink.mavlink_scaled_pressure_t>();
                             press_abs = pres.press_abs;
                             press_temp = pres.temperature;
+
+                            airspeed1_temp = pres.temperature_press_diff;
                         }
 
                         break;
@@ -2465,6 +3139,8 @@ namespace MissionPlanner
                             var pres = mavLinkMessage.ToStructure<MAVLink.mavlink_scaled_pressure2_t>();
                             press_abs2 = pres.press_abs;
                             press_temp2 = pres.temperature;
+
+                            airspeed2_temp = pres.temperature_press_diff;
                         }
 
                         break;
@@ -2477,29 +3153,6 @@ namespace MissionPlanner
                             ter_load = terrainrep.loaded;
                             ter_pend = terrainrep.pending;
                             ter_space = terrainrep.spacing;
-                        }
-
-                        break;
-                    case (uint)MAVLink.MAVLINK_MSG_ID.SENSOR_OFFSETS:
-
-                        {
-                            var sensofs = mavLinkMessage.ToStructure<MAVLink.mavlink_sensor_offsets_t>();
-
-                            mag_ofs_x = sensofs.mag_ofs_x;
-                            mag_ofs_y = sensofs.mag_ofs_y;
-                            mag_ofs_z = sensofs.mag_ofs_z;
-                            mag_declination = sensofs.mag_declination;
-
-                            raw_press = sensofs.raw_press;
-                            raw_temp = sensofs.raw_temp;
-
-                            gyro_cal_x = sensofs.gyro_cal_x;
-                            gyro_cal_y = sensofs.gyro_cal_y;
-                            gyro_cal_z = sensofs.gyro_cal_z;
-
-                            accel_cal_x = sensofs.accel_cal_x;
-                            accel_cal_y = sensofs.accel_cal_y;
-                            accel_cal_z = sensofs.accel_cal_z;
                         }
 
                         break;
@@ -2529,7 +3182,7 @@ namespace MissionPlanner
                             alt = loc.relative_alt / 1000.0f;
 
                             useLocation = true;
-                            if (loc.lat == 0 && loc.lon == 0)
+                            if (loc.lat == 0 || loc.lon == 0 || loc.lat == int.MaxValue || loc.lon == int.MaxValue)
                             {
                                 useLocation = false;
                             }
@@ -2554,8 +3207,10 @@ namespace MissionPlanner
 
                             if (!useLocation)
                             {
-                                lat = gps.lat * 1.0e-7;
-                                lng = gps.lon * 1.0e-7;
+                                if (gps.lat != int.MaxValue)
+                                    lat = gps.lat * 1.0e-7;
+                                if (gps.lon != int.MaxValue)
+                                    lng = gps.lon * 1.0e-7;
 
                                 altasl = gps.alt / 1000.0f;
                                 // alt = gps.alt; // using vfr as includes baro calc
@@ -2582,6 +3237,7 @@ namespace MissionPlanner
                                 gpsv_acc = gps.v_acc / 1000.0f;
                                 gpsvel_acc = gps.vel_acc / 1000.0f;
                                 gpshdg_acc = gps.hdg_acc / 1e5f;
+                                gpsyaw = gps.yaw / 100.0f;
                             }
                             else
                             {
@@ -2589,6 +3245,7 @@ namespace MissionPlanner
                                 gpsv_acc = -1;
                                 gpsvel_acc = -1;
                                 gpshdg_acc = -1;
+                                gpsyaw = -1;
                             }
 
                             //MAVLink.packets[(byte)MAVLink.MSG_NAMES.GPS_RAW);
@@ -2611,6 +3268,23 @@ namespace MissionPlanner
 
                             groundspeed2 = gps.vel * 1.0e-2f;
                             groundcourse2 = gps.cog * 1.0e-2f;
+
+                            if (mavLinkMessage.ismavlink2)
+                            {
+                                gpsh_acc2 = gps.h_acc / 1000.0f;
+                                gpsv_acc2 = gps.v_acc / 1000.0f;
+                                gpsvel_acc2 = gps.vel_acc / 1000.0f;
+                                gpshdg_acc2 = gps.hdg_acc / 1e5f;
+                                gpsyaw2 = gps.yaw / 100.0f;
+                            }
+                            else
+                            {
+                                gpsh_acc2 = -1;
+                                gpsv_acc2 = -1;
+                                gpsvel_acc2 = -1;
+                                gpshdg_acc2 = -1;
+                                gpsyaw2 = -1;
+                            }
                         }
 
                         break;
@@ -2663,8 +3337,10 @@ namespace MissionPlanner
                             try
                             {
                                 if (oldwp != wpno && Speech != null && Speech.speechEnable && parent != null &&
+                                    parent.parent.speechenabled &&
                                     parent.parent.MAV.cs == this &&
-                                    Settings.Instance.GetBoolean("speechwaypointenabled"))
+                                    Settings.Instance.GetBoolean("speechwaypointenabled") &&
+                                    (armed || !Settings.Instance.GetBoolean("speech_armed_only")))
                                     Speech.SpeakAsync(Common.speechConversion(parent,
                                         "" + Settings.Instance["speechwaypoint"]));
                             }
@@ -2753,8 +3429,11 @@ namespace MissionPlanner
                             ch15in = rcin.chan15_raw;
                             ch16in = rcin.chan16_raw;
 
-                            //percent
-                            rxrssi = (int)(rcin.rssi / 255.0 * 100.0);
+                            // As per mavlink, rcin.rssi is 0-254, 0 being the worst and 254 being the best and 255 invalid/unknown
+                            // get the percentage
+                            rxrssi = (int)(rcin.rssi / 254.0 * 100.0);
+                            // if invalid, set to 0
+                            if (rcin.rssi == 255) rxrssi = 0;
 
                             //MAVLink.packets[(byte)MAVLink.MSG_NAMES.RC_CHANNELS_RAW);
                         }
@@ -2812,29 +3491,103 @@ namespace MissionPlanner
                         }
 
                         break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.ESC_TELEMETRY_9_TO_12:
+
+                        {
+                            var esc = mavLinkMessage.ToStructure<MAVLink.mavlink_esc_telemetry_9_to_12_t>();
+                            esc9_volt = esc.voltage[0] / 100.0f;
+                            esc9_curr = esc.current[0] / 100.0f;
+                            esc9_rpm = esc.rpm[0];
+                            esc9_temp = esc.temperature[0];
+
+                            esc10_volt = esc.voltage[1] / 100.0f;
+                            esc10_curr = esc.current[1] / 100.0f;
+                            esc10_rpm = esc.rpm[1];
+                            esc10_temp = esc.temperature[1];
+
+                            esc11_volt = esc.voltage[2] / 100.0f;
+                            esc11_curr = esc.current[2] / 100.0f;
+                            esc11_rpm = esc.rpm[2];
+                            esc11_temp = esc.temperature[2];
+
+                            esc12_volt = esc.voltage[3] / 100.0f;
+                            esc12_curr = esc.current[3] / 100.0f;
+                            esc12_rpm = esc.rpm[3];
+                            esc12_temp = esc.temperature[3];
+                        }
+
+                        break;
+
+                    case (uint)MAVLink.MAVLINK_MSG_ID.ESC_TELEMETRY_13_TO_16:
+
+                        {
+                            var esc = mavLinkMessage.ToStructure<MAVLink.mavlink_esc_telemetry_13_to_16_t>();
+                            esc13_volt = esc.voltage[0] / 100.0f;
+                            esc13_curr = esc.current[0] / 100.0f;
+                            esc13_rpm = esc.rpm[0];
+                            esc13_temp = esc.temperature[0];
+
+                            esc14_volt = esc.voltage[1] / 100.0f;
+                            esc14_curr = esc.current[1] / 100.0f;
+                            esc14_rpm = esc.rpm[1];
+                            esc14_temp = esc.temperature[1];
+
+                            esc15_volt = esc.voltage[2] / 100.0f;
+                            esc15_curr = esc.current[2] / 100.0f;
+                            esc15_rpm = esc.rpm[2];
+                            esc15_temp = esc.temperature[2];
+
+                            esc16_volt = esc.voltage[3] / 100.0f;
+                            esc16_curr = esc.current[3] / 100.0f;
+                            esc16_rpm = esc.rpm[3];
+                            esc16_temp = esc.temperature[3];
+                        }
+
+                        break;
+
                     case (uint)MAVLink.MAVLINK_MSG_ID.SERVO_OUTPUT_RAW:
 
                         {
                             var servoout = mavLinkMessage.ToStructure<MAVLink.mavlink_servo_output_raw_t>();
 
-                            ch1out = servoout.servo1_raw;
-                            ch2out = servoout.servo2_raw;
-                            ch3out = servoout.servo3_raw;
-                            ch4out = servoout.servo4_raw;
-                            ch5out = servoout.servo5_raw;
-                            ch6out = servoout.servo6_raw;
-                            ch7out = servoout.servo7_raw;
-                            ch8out = servoout.servo8_raw;
-
-                            // mavlink2 extension
-                            ch9out = servoout.servo9_raw;
-                            ch10out = servoout.servo10_raw;
-                            ch11out = servoout.servo11_raw;
-                            ch12out = servoout.servo12_raw;
-                            ch13out = servoout.servo13_raw;
-                            ch14out = servoout.servo14_raw;
-                            ch15out = servoout.servo15_raw;
-                            ch16out = servoout.servo16_raw;
+                            if (servoout.port == 0)
+                            {
+                                ch1out = servoout.servo1_raw;
+                                ch2out = servoout.servo2_raw;
+                                ch3out = servoout.servo3_raw;
+                                ch4out = servoout.servo4_raw;
+                                ch5out = servoout.servo5_raw;
+                                ch6out = servoout.servo6_raw;
+                                ch7out = servoout.servo7_raw;
+                                ch8out = servoout.servo8_raw;
+                                ch9out = servoout.servo9_raw;
+                                ch10out = servoout.servo10_raw;
+                                ch11out = servoout.servo11_raw;
+                                ch12out = servoout.servo12_raw;
+                                ch13out = servoout.servo13_raw;
+                                ch14out = servoout.servo14_raw;
+                                ch15out = servoout.servo15_raw;
+                                ch16out = servoout.servo16_raw;
+                            }
+                            else if (servoout.port == 1)
+                            {
+                                ch17out = servoout.servo1_raw;
+                                ch18out = servoout.servo2_raw;
+                                ch19out = servoout.servo3_raw;
+                                ch20out = servoout.servo4_raw;
+                                ch21out = servoout.servo5_raw;
+                                ch22out = servoout.servo6_raw;
+                                ch23out = servoout.servo7_raw;
+                                ch24out = servoout.servo8_raw;
+                                ch25out = servoout.servo9_raw;
+                                ch26out = servoout.servo10_raw;
+                                ch27out = servoout.servo11_raw;
+                                ch28out = servoout.servo12_raw;
+                                ch29out = servoout.servo13_raw;
+                                ch30out = servoout.servo14_raw;
+                                ch31out = servoout.servo15_raw;
+                                ch32out = servoout.servo16_raw;
+                            }
                         }
 
                         break;
@@ -2854,6 +3607,8 @@ namespace MissionPlanner
                             mx = imu.xmag;
                             my = imu.ymag;
                             mz = imu.zmag;
+
+                            imu1_temp = imu.temperature / 100.0f;
 
                             var timesec = imu.time_usec * 1.0e-6;
 
@@ -2891,7 +3646,7 @@ namespace MissionPlanner
                             my = imu.ymag;
                             mz = imu.zmag;
 
-                            //MAVLink.packets[(byte)MAVLink.MSG_NAMES.RAW_IMU);
+                            imu1_temp = imu.temperature / 100.0f;
                         }
 
                         break;
@@ -2911,6 +3666,8 @@ namespace MissionPlanner
                             mx2 = imu2.xmag;
                             my2 = imu2.ymag;
                             mz2 = imu2.zmag;
+
+                            imu2_temp = imu2.temperature / 100.0f;
                         }
 
 
@@ -2931,6 +3688,8 @@ namespace MissionPlanner
                             mx3 = imu3.xmag;
                             my3 = imu3.ymag;
                             mz3 = imu3.zmag;
+
+                            imu3_temp = imu3.temperature / 100.0f;
                         }
 
                         break;
@@ -2939,8 +3698,7 @@ namespace MissionPlanner
                         {
                             var pid = mavLinkMessage.ToStructure<MAVLink.mavlink_pid_tuning_t>();
 
-                            //todo: currently only deals with single axis at once
-
+                            // These variables currently only deal a with single axis at once, but SRate can be reported for multiple at once
                             pidff = pid.FF;
                             pidP = pid.P;
                             pidI = pid.I;
@@ -2948,6 +3706,49 @@ namespace MissionPlanner
                             pidaxis = pid.axis;
                             piddesired = pid.desired;
                             pidachieved = pid.achieved;
+                            pidSRate = pid.SRate;
+                            pidPDmod = pid.PDmod;
+
+                            switch (pid.axis)
+                            {
+                                case (byte)MAVLink.PID_TUNING_AXIS.PID_TUNING_ROLL:
+                                    pidSRateRoll = pid.SRate;
+                                    break;
+                                case (byte)MAVLink.PID_TUNING_AXIS.PID_TUNING_PITCH:
+                                    pidSRatePitch = pid.SRate;
+                                    break;
+                                case (byte)MAVLink.PID_TUNING_AXIS.PID_TUNING_YAW:
+                                    pidSRateYaw = pid.SRate;
+                                    break;
+                                case (byte)MAVLink.PID_TUNING_AXIS.PID_TUNING_ACCZ:
+                                    pidSRateAccZ = pid.SRate;
+                                    break;
+                                case (byte)MAVLink.PID_TUNING_AXIS.PID_TUNING_STEER:
+                                    pidSRateSteer = pid.SRate;
+                                    break;
+                                case (byte)MAVLink.PID_TUNING_AXIS.PID_TUNING_LANDING:
+                                    pidSRateLanding = pid.SRate;
+                                    break;
+                            }
+
+                        }
+
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.HYGROMETER_SENSOR:
+
+                        {
+                            var hygrometer = mavLinkMessage.ToStructure<MAVLink.mavlink_hygrometer_sensor_t>();
+
+                            if (hygrometer.id == 0)
+                            {
+                                hygrotemp1 = hygrometer.temperature;
+                                hygrohumi1 = hygrometer.humidity;
+                            }
+                            else if (hygrometer.id == 1)
+                            {
+                                hygrotemp2 = hygrometer.temperature;
+                                hygrohumi2 = hygrometer.humidity;
+                            }
                         }
 
                         break;
@@ -2957,25 +3758,16 @@ namespace MissionPlanner
                             var vfr = mavLinkMessage.ToStructure<MAVLink.mavlink_vfr_hud_t>();
 
                             groundspeed = vfr.groundspeed;
-
                             airspeed = vfr.airspeed;
-
-                            //alt = vfr.alt; // this might include baro
-
                             ch3percent = vfr.throttle;
 
                             if (sensors_present.revthrottle && sensors_enabled.revthrottle && sensors_health.revthrottle)
                                 if (ch3percent > 0)
                                     ch3percent *= -1;
 
-                            //Console.WriteLine(alt);
-
-                            //climbrate = vfr.climb;
-
-                            // heading = vfr.heading;
-
-
-                            //MAVLink.packets[(byte)MAVLink.MSG_NAMES.VFR_HUD);
+                            //This comes from the EKF, so it supposed to be correct
+                            climbrate = vfr.climb;
+                            gotVFR = true; // we have a vfr packet
                         }
 
                         break;
@@ -3006,7 +3798,7 @@ namespace MissionPlanner
                         {
                             var named_float = mavLinkMessage.ToStructure<MAVLink.mavlink_named_value_float_t>();
 
-                            string mav_value_name = Encoding.ASCII.GetString(named_float.name);
+                            string mav_value_name = Encoding.UTF8.GetString(named_float.name);
 
                             int ind = mav_value_name.IndexOf('\0');
                             if (ind != -1)
@@ -3017,15 +3809,15 @@ namespace MissionPlanner
                             float value = named_float.value;
                             var field = custom_field_names.FirstOrDefault(x => x.Value == name).Key;
 
-                            //todo: if field is null then check if we have a free customfield and add the named_value 
+                            //todo: if field is null then check if we have a free customfield and add the named_value
                             if (field == null)
                             {
                                 short i;
-                                for (i = 0; i < 10; i++)
+                                for (i = 0; i < 20; i++)
                                 {
                                     if (!custom_field_names.ContainsKey("customfield" + i.ToString())) break;
                                 }
-                                if (i < 10)
+                                if (i < 20)
                                 {
                                     field = "customfield" + i.ToString();
                                     custom_field_names.Add(field, name);
@@ -3067,6 +3859,36 @@ namespace MissionPlanner
                                     case "customfield9":
                                         customfield9 = value;
                                         break;
+                                    case "customfield10":
+                                        customfield10 = value;
+                                        break;
+                                    case "customfield11":
+                                        customfield11 = value;
+                                        break;
+                                    case "customfield12":
+                                        customfield12 = value;
+                                        break;
+                                    case "customfield13":
+                                        customfield13 = value;
+                                        break;
+                                    case "customfield14":
+                                        customfield14 = value;
+                                        break;
+                                    case "customfield15":
+                                        customfield15 = value;
+                                        break;
+                                    case "customfield16":
+                                        customfield16 = value;
+                                        break;
+                                    case "customfield17":
+                                        customfield17 = value;
+                                        break;
+                                    case "customfield18":
+                                        customfield18 = value;
+                                        break;
+                                    case "customfield19":
+                                        customfield19 = value;
+                                        break;
                                     default:
                                         break;
                                 }
@@ -3075,15 +3897,282 @@ namespace MissionPlanner
 
                         }
                         break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.GIMBAL_DEVICE_ATTITUDE_STATUS:
+                        {
+                            var status = mavLinkMessage.ToStructure<MAVLink.mavlink_gimbal_device_attitude_status_t>();
+                            Quaternion q = new Quaternion(status.q[0], status.q[1], status.q[2], status.q[3]);
+                            campointa = (float)(q.get_euler_pitch() * (180.0 / Math.PI));
+                            campointb = (float)(q.get_euler_roll() * (180.0 / Math.PI));
+                            campointc = (float)(q.get_euler_yaw() * (180.0 / Math.PI));
+                            if (campointc < 0) campointc += 360; //normalization
+                        }
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.UAVIONIX_ADSB_OUT_STATUS:
+                        {
+                            var status = mavLinkMessage.ToStructure<MAVLink.mavlink_uavionix_adsb_out_status_t>();
+
+                            xpdr_es1090_tx_enabled = (status.state & 128) != 0;
+                            xpdr_mode_S_enabled = (status.state & 64) != 0;
+                            xpdr_mode_C_enabled = (status.state & 32) != 0;
+                            xpdr_mode_A_enabled = (status.state & 16) != 0;
+                            xpdr_ident_active = (status.state & 8) != 0;
+                            xpdr_x_bit_status = (status.state & 4) != 0;
+                            xpdr_interrogated_since_last = (status.state & 2) != 0;
+                            xpdr_airborne_status = (status.state & 1) != 0;
+
+                            xpdr_mode_A_squawk_code = status.squawk;
+                            xpdr_nic = (byte)(status.NIC_NACp & 0x0F);
+                            xpdr_nacp = (byte)((status.NIC_NACp >> 4) & 0x0F);
+                            xpdr_board_temperature = status.boardTemp;
+
+                            xpdr_maint_req = (status.fault & 128) != 0;
+                            xpdr_adsb_tx_sys_fail = (status.fault & 64) != 0;
+                            xpdr_gps_unavail = (status.fault & 32) != 0;
+                            xpdr_gps_no_fix = (status.fault & 16) != 0;
+                            xpdr_status_unavail = (status.fault & 8) != 0;
+
+                            xpdr_flight_id = status.flight_id;
+
+                            xpdr_status_pending = true;
+                        }
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.HIGHRES_IMU:
+                        {
+                            const ushort HIGHRES_IMU_UPDATED_XACC = 0x01;
+                            const ushort HIGHRES_IMU_UPDATED_YACC = 0x02;
+                            const ushort HIGHRES_IMU_UPDATED_ZACC = 0x04;
+                            const ushort HIGHRES_IMU_UPDATED_XGYRO = 0x08;
+                            const ushort HIGHRES_IMU_UPDATED_YGYRO = 0x10;
+                            const ushort HIGHRES_IMU_UPDATED_ZGYRO = 0x20;
+                            const ushort HIGHRES_IMU_UPDATED_XMAG = 0x40;
+                            const ushort HIGHRES_IMU_UPDATED_YMAG = 0x80;
+                            const ushort HIGHRES_IMU_UPDATED_ZMAG = 0x100;
+                            const ushort HIGHRES_IMU_UPDATED_ABS_PRESSURE = 0x200;
+                            const ushort HIGHRES_IMU_UPDATED_DIFF_PRESSURE = 0x400;
+                            const ushort HIGHRES_IMU_UPDATED_PRESSURE_ALT = 0x800;
+                            const ushort HIGHRES_IMU_UPDATED_TEMPERATURE = 0x1000;
+                            const ushort HIGHRES_IMU_UPDATED_ALL = 0xFFFF;
+
+                            var imu = mavLinkMessage.ToStructure<MAVLink.mavlink_highres_imu_t>();
+                            if (imu.id == 0)
+                            {
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XACC) > 0)
+                                {
+                                    ax = imu.xacc;
+                                    ay = imu.yacc;
+                                    az = imu.zacc;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XGYRO) > 0)
+                                {
+                                    gx = imu.xgyro;
+                                    gy = imu.ygyro;
+                                    gz = imu.zgyro;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XMAG) > 0)
+                                {
+                                    mx = imu.xmag;
+                                    my = imu.ymag;
+                                    mz = imu.zmag;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_ABS_PRESSURE) > 0)
+                                {
+                                    press_abs = imu.abs_pressure;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_TEMPERATURE) > 0)
+                                {
+                                    press_temp = (int)imu.temperature;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_PRESSURE_ALT) > 0)
+                                {
+                                    altasl = imu.pressure_alt;
+                                }
+                            }
+                            else if (imu.id == 1)
+                            {
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XACC) > 0)
+                                {
+                                    ax2 = imu.xacc;
+                                    ay2 = imu.yacc;
+                                    az2 = imu.zacc;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XGYRO) > 0)
+                                {
+                                    gx2 = imu.xgyro;
+                                    gy2 = imu.ygyro;
+                                    gz2 = imu.zgyro;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XMAG) > 0)
+                                {
+                                    mx2 = imu.xmag;
+                                    my2 = imu.ymag;
+                                    mz2 = imu.zmag;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_ABS_PRESSURE) > 0)
+                                {
+                                    press_abs = imu.abs_pressure;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_TEMPERATURE) > 0)
+                                {
+                                    press_temp = (int)imu.temperature;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_PRESSURE_ALT) > 0)
+                                {
+                                    altasl = imu.pressure_alt;
+                                }
+                            }
+                            else if (imu.id == 2)
+                            {
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XACC) > 0)
+                                {
+                                    ax3 = imu.xacc;
+                                    ay3 = imu.yacc;
+                                    az3 = imu.zacc;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XGYRO) > 0)
+                                {
+                                    gx3 = imu.xgyro;
+                                    gy3 = imu.ygyro;
+                                    gz3 = imu.zgyro;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_XMAG) > 0)
+                                {
+                                    mx3 = imu.xmag;
+                                    my3 = imu.ymag;
+                                    mz3 = imu.zmag;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_ABS_PRESSURE) > 0)
+                                {
+                                    press_abs = imu.abs_pressure;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_TEMPERATURE) > 0)
+                                {
+                                    press_temp = (int)imu.temperature;
+                                }
+                                if ((imu.fields_updated & HIGHRES_IMU_UPDATED_PRESSURE_ALT) > 0)
+                                {
+                                    altasl = imu.pressure_alt;
+                                }
+                            }
+                        }
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.MCU_STATUS:
+                        {
+                            var mcu = mavLinkMessage.ToStructure<MAVLink.mavlink_mcu_status_t>();
+                            if (mcu.id == 0)
+                            {
+                                mcutemp = mcu.MCU_temperature / 100.0f;
+                                mcuvoltage = mcu.MCU_voltage / 1000.0f;
+                                mcuminvolt = mcu.MCU_voltage_min / 1000.0f;
+                                mcumaxvolt = mcu.MCU_voltage_max / 1000.0f;
+                            }
+                        }
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.AHRS:
+                        {
+                            var ahrs = mavLinkMessage.ToStructure<MAVLink.mavlink_ahrs_t>();
+                            
+                        }
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.AHRS2:
+                        {
+                            var ahrs2 = mavLinkMessage.ToStructure<MAVLink.mavlink_ahrs2_t>();
+
+                            ahrs2_roll = ahrs2.roll * (float)MathHelper.rad2deg;
+                            ahrs2_pitch = ahrs2.pitch * (float)MathHelper.rad2deg;
+                            ahrs2_yaw = ahrs2.yaw * (float)MathHelper.rad2deg;
+                            ahrs2_alt = ahrs2.altitude;
+                            ahrs2_lat = ahrs2.lat / 1e7;
+                            ahrs2_lng = ahrs2.lng / 1e7;
+                        }
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.AIRSPEED:
+                        {
+                            var airspeedp = mavLinkMessage.ToStructure<MAVLink.mavlink_airspeed_t>();
+
+                           if(airspeedp.id == 0)
+                            {
+                                airspeed = airspeedp.airspeed;
+                                airspeed1_temp = (float)(airspeedp.temperature / 100.0);
+                            }
+                        }
+                        break;
+                    case (uint)MAVLink.MAVLINK_MSG_ID.CAN_FRAME:
+                    case (uint)MAVLink.MAVLINK_MSG_ID.CANFD_FRAME:
+                    case (uint)MAVLink.MAVLINK_MSG_ID.FILE_TRANSFER_PROTOCOL:
+                    case (uint)MAVLink.MAVLINK_MSG_ID.LOG_DATA:
+                    case (uint)MAVLink.MAVLINK_MSG_ID.DEVICE_OP_WRITE_REPLY:
+                    case (uint)MAVLink.MAVLINK_MSG_ID.TIMESYNC:
+                        break;
+                    default:
+                        {
+                            Debug.WriteLine("Unhandled CS message " + mavLinkMessage.msgid + " = " + mavLinkMessage.msgtypename);
+                        }
+                        break;
                 }
             }
         }
+
+        [GroupText("AHRS2")]
+        public float ahrs2_roll { get; set; }
+        [GroupText("AHRS2")]
+        public float ahrs2_pitch { get; set; }
+        [GroupText("AHRS2")]
+        public float ahrs2_yaw { get; set; }
+        [GroupText("AHRS2")]
+        public float ahrs2_alt { get; set; }
+        [GroupText("AHRS2")]
+        public double ahrs2_lat { get; set; }
+        [GroupText("AHRS2")]
+        public double ahrs2_lng { get; set; }
+
+
+        [GroupText("MCU")]
+        [DisplayText("mcu max voltage")]
+        public float mcumaxvolt { get; set; }
+        [GroupText("MCU")]
+        [DisplayText("mcu min voltage")]
+        public float mcuminvolt { get; set; }
+
+        [GroupText("MCU")]
+        [DisplayText("mcu voltage")]
+        public float mcuvoltage { get; set; }
+
+        [GroupText("MCU")]
+        [DisplayText("mcu temperature")]
+        public float mcutemp { get; set; }
+
+        [GroupText("Fence")]
+        [DisplayText("Breach count")]
+        public ushort fenceb_count { get; set; }
+
+        [GroupText("Fence")]
+        [DisplayText("Breach status")]
+        public byte fenceb_status { get; set; }
+
+        [GroupText("Fence")]
+        [DisplayText("Breach type")]
+        public byte fenceb_type { get; set; }
+
+        [GroupText("Position")]
+        [DisplayText("North")]
+        public float posn { get; set; }
+        [GroupText("Position")]
+        [DisplayText("East")]
+        public float pose { get; set; }
+        [GroupText("Position")]
+        [DisplayText("Down")]
+        public float posd { get; set; }
 
         public event EventHandler csCallBack;
 
         public static double toDistDisplayUnit(double input)
         {
             return input * multiplierdist;
+        }
+
+        public static double toAltDisplayUnit(double input)
+        {
+            return input * multiplieralt;
         }
 
         public static double toSpeedDisplayUnit(double input)
@@ -3125,6 +4214,59 @@ namespace MissionPlanner
             }
         }
 
+        public static int StringCompareTo(string a, string b)
+        {
+            char[] arr1 = a.ToCharArray();
+            char[] arr2 = b.ToCharArray();
+            int i = 0, j = 0;
+            while (i < arr1.Length && j < arr2.Length)
+            {
+                if (char.IsDigit(arr1[i]) && char.IsDigit(arr2[j]))
+                {
+                    string s1 = "", s2 = "";
+                    while (i < arr1.Length && char.IsDigit(arr1[i]))
+                    {
+                        s1 += arr1[i];
+                        i++;
+                    }
+                    while (j < arr2.Length && char.IsDigit(arr2[j]))
+                    {
+                        s2 += arr2[j];
+                        j++;
+                    }
+                    if (int.Parse(s1) > int.Parse(s2))
+                    {
+                        return 1;
+                    }
+                    if (int.Parse(s1) < int.Parse(s2))
+                    {
+                        return -1;
+                    }
+                }
+                else
+                {
+                    if (char.ToLower(arr1[i]) > char.ToLower(arr2[j]))
+                    {
+                        return 1;
+                    }
+                    if (char.ToLower(arr1[i]) < char.ToLower(arr2[j]))
+                    {
+                        return -1;
+                    }
+                    i++;
+                    j++;
+                }
+            }
+            if (arr1.Length == arr2.Length)
+            {
+                return 0;
+            }
+            else
+            {
+                return arr1.Length > arr2.Length ? 1 : -1;
+            }
+        }
+
         public List<string> GetItemList(bool alpha = false, bool numbersonly = false)
         {
             var ans = new List<string>();
@@ -3146,9 +4288,47 @@ namespace MissionPlanner
             }
 
             if (alpha)
-                ans.Sort();
+                ans.Sort((a, b) => StringCompareTo(a, b));
 
             return ans;
+        }
+
+        public string GetFieldDesc(string name)
+        {
+            if (custom_field_names.ContainsKey(name))
+            {
+                var desc = custom_field_names[name];
+                return desc;
+            }
+
+            try
+            {
+                var typeofthing = typeof(CurrentState).GetProperty(name);
+
+                if (typeofthing != null)
+                {
+                    var attrib = typeofthing.GetCustomAttributes(false).OfType<DisplayFieldNameAttribute>().ToArray();
+
+                    if (attrib.Length > 0)
+                    {
+                        var translated = attrib.OfType<DisplayFieldNameAttribute>().First().TryTranslate(defaultTo: null);
+
+                        if (translated != null)
+                        {
+                            var desc = translated.Replace("(fieldName)", name);
+                            return desc;
+                        }
+
+                        // fall-through
+                    }
+                }
+            } catch
+            {
+                // NOTE: The exception will get logged automatically,
+                // therefore we may swallow the exception and move on.
+            }
+
+            return name;
         }
 
         public string GetNameandUnit(string name)
@@ -3217,7 +4397,7 @@ namespace MissionPlanner
                     //check if valid mavinterface
                     if (parent != null && parent.packetsnotlost != 0)
                     {
-                        if ((DateTime.Now - MAV.lastvalidpacket).TotalSeconds > 10)
+                        if ((DateTime.UtcNow - MAV.lastvalidpacket).TotalSeconds > 10)
                             linkqualitygcs = 0;
                         else
                             linkqualitygcs =
@@ -3253,10 +4433,6 @@ namespace MissionPlanner
                             timeSinceArmInAir++;
                         }
 
-                        // to maintain total timeinair for this session not just based on arming
-                        if (!armed)
-                            timeSinceArmInAir = 0;
-
                         if (!gotwind)
                             dowindcalc();
                     }
@@ -3283,6 +4459,8 @@ namespace MissionPlanner
                             mavinterface.requestDatastream(MAVLink.MAV_DATA_STREAM.RC_CHANNELS, MAV.cs.raterc,
                                 MAV.sysid,
                                 MAV.compid); // request rc info
+                            MAV.Camera?.RequestMessageIntervals(MAV.cs.ratestatus); // use ratestatus until we create a new setting for this
+                            MAV.GimbalManager?.Discover();
                         }
                         catch
                         {
@@ -3318,7 +4496,7 @@ namespace MissionPlanner
         public void dowindcalc()
         {
             //Wind Fixed gain Observer
-            //Ryan Beall 
+            //Ryan Beall
             //8FEB10
 
             var Kw = 0.010; // 0.01 // 0.10
@@ -3603,6 +4781,44 @@ namespace MissionPlanner
             {
                 return Convert.ToString(Value, 2);
             }
+        }
+
+        public static string GetGroupText(string fieldname)
+        {
+            try
+            {
+                var typeofthing = (typeof(CurrentState)).GetProperty(fieldname);
+                if (typeofthing != null)
+                {
+                    var attrib = typeofthing.GetCustomAttributes(typeof(GroupText), false);
+                    if (attrib.Length > 0)
+                        return attrib.OfType<GroupText>()?.First().DisplayName;
+                }
+            }
+            catch
+            {
+            }
+
+            return "";
+        }
+
+        public static string GetDisplayText(string fieldname)
+        {
+            try
+            {
+                var typeofthing = (typeof(CurrentState)).GetProperty(fieldname);
+                if (typeofthing != null)
+                {
+                    var attrib = typeofthing.GetCustomAttributes(typeof(DisplayTextAttribute), false);
+                    if (attrib.Length > 0)
+                        return attrib.OfType<DisplayTextAttribute>()?.First().Text;
+                }
+            }
+            catch
+            {
+            }
+
+            return "";
         }
     }
 }

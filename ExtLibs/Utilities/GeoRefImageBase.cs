@@ -6,6 +6,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
@@ -19,6 +20,7 @@ using MissionPlanner.Comms;
 using MissionPlanner.Utilities;
 using SharpKml.Base;
 using SharpKml.Dom;
+using Document = SharpKml.Dom.Document;
 
 namespace MissionPlanner.GeoRef
 {
@@ -40,6 +42,9 @@ namespace MissionPlanner.GeoRef
         public List<int> JXL_StationIDs = new List<int>();
         public bool useAMSLAlt;
         public int millisShutterLag = 0;
+
+        public Dictionary<long, VehicleLocation> camLocations { get; private set; }
+        public double minshutter { get; set; } = 0.5;
 
         /// <summary>
         /// Get a photos shutter time
@@ -110,7 +115,7 @@ namespace MissionPlanner.GeoRef
                 Image myImage = Image.FromFile(fn);
                 PropertyItem propItem = myImage.GetPropertyItem(36867); // 36867  // 306
 
-                //Convert date taken metadata to a DateTime object 
+                //Convert date taken metadata to a DateTime object
                 string sdate = Encoding.UTF8.GetString(propItem.Value).Trim();
                 string secondhalf = sdate.Substring(sdate.IndexOf(" "), (sdate.Length - sdate.IndexOf(" ")));
                 string firsthalf = sdate.Substring(0, 10);
@@ -220,7 +225,7 @@ namespace MissionPlanner.GeoRef
 
                             try
                             {
-                                location.Time = item.time;
+                                location.Time = item.time.ToUniversalTime();
 
                                 if (statusindex != -1)
                                 {
@@ -351,6 +356,7 @@ namespace MissionPlanner.GeoRef
                 using (var sr = new DFLogBuffer(File.OpenRead(fn)))
                 {
                     //FMT, 146, 43, CAM, QIHLLeeeccC, TimeUS,GPSTime,GPSWeek,Lat,Lng,Alt,RelAlt,GPSAlt,Roll,Pitch,Yaw
+                    //        "CAM", "QBHIHLLeeeccC","TimeUS,I,Img,GPSTime,GPSWeek,Lat,Lng,Alt,RelAlt,GPSAlt,R,P,Y
                     //FMT, 198, 17, RFND, QCBCB, TimeUS,Dist1,Orient1,Dist2,Orient2
                     foreach (var item in sr.GetEnumeratorType(new string[] { "CAM", "RFND" }))
                     {
@@ -365,6 +371,13 @@ namespace MissionPlanner.GeoRef
                             int rindex = sr.dflog.FindMessageOffset("CAM", "Roll");
                             int pindex = sr.dflog.FindMessageOffset("CAM", "Pitch");
                             int yindex = sr.dflog.FindMessageOffset("CAM", "Yaw");
+
+                            if (rindex == -1)
+                                rindex = sr.dflog.FindMessageOffset("CAM", "R");
+                            if (pindex == -1)
+                                pindex = sr.dflog.FindMessageOffset("CAM", "P");
+                            if (yindex == -1)
+                                yindex = sr.dflog.FindMessageOffset("CAM", "Y");
 
                             int gtimeindex = sr.dflog.FindMessageOffset("CAM", "GPSTime");
                             int gweekindex = sr.dflog.FindMessageOffset("CAM", "GPSWeek");
@@ -422,9 +435,12 @@ namespace MissionPlanner.GeoRef
                         int raltindex = sr.dflog.FindMessageOffset("TRIG", "RelAlt");
                         int galtindex = sr.dflog.FindMessageOffset("TRIG", "GPSAlt");
 
-                        int rindex = sr.dflog.FindMessageOffset("TRIG", "Roll");
-                        int pindex = sr.dflog.FindMessageOffset("TRIG", "Pitch");
-                        int yindex = sr.dflog.FindMessageOffset("TRIG", "Yaw");
+                        int rindex = sr.dflog.FindMessageOffset("TRIG", "R");
+                        if (rindex == -1) { rindex = sr.dflog.FindMessageOffset("TRIG", "Roll"); }
+                        int pindex = sr.dflog.FindMessageOffset("TRIG", "P");
+                        if (pindex == -1) { pindex = sr.dflog.FindMessageOffset("TRIG", "Pitch"); }
+                        int yindex = sr.dflog.FindMessageOffset("TRIG", "Y");
+                        if (yindex == -1) { yindex = sr.dflog.FindMessageOffset("TRIG", "Yaw"); }
 
                         int gtimeindex = sr.dflog.FindMessageOffset("TRIG", "GPSTime");
                         int gweekindex = sr.dflog.FindMessageOffset("TRIG", "GPSWeek");
@@ -492,9 +508,10 @@ namespace MissionPlanner.GeoRef
         {
             if (vehicleLocations == null || vehicleLocations.Count <= 0)
             {
+                camLocations = readCAMMsgInLog(logFile);
                 if (usecam)
                 {
-                    vehicleLocations = readCAMMsgInLog(logFile);
+                    vehicleLocations = camLocations;
                 }
                 else
                 {
@@ -517,11 +534,17 @@ namespace MissionPlanner.GeoRef
             if (files == null || files.Length == 0)
                 return -1;
 
+            // load all image info
+            Parallel.ForEach(files, filename => { getPhotoTime(filename); });
+
+            // sort
             Array.Sort(files, compareFileByPhotoTime);
 
             double ans = 0;
 
-            for (int a = 0; a < 4; a++)
+            int[] itemstocheck = new int[] { 0, 1, 2, 3, files.Length - 3, files.Length - 2, files.Length - 1 };
+
+            foreach (int a in itemstocheck)
             {
                 // First Photo time
                 string firstPhoto = files[a];
@@ -555,12 +578,8 @@ namespace MissionPlanner.GeoRef
         {
             long time = ToMilliseconds(t);
 
-            // Time at which the GPS position is actually search and found
-            long actualTime = time;
-            int millisSTEP = 1;
-
             // 2 seconds (2000 ms) in the log as absolute maximum
-            int maxIteration = offsettime;
+            int maxIteration = offsettime / 2;
 
             bool found = false;
             int iteration = 0;
@@ -568,14 +587,18 @@ namespace MissionPlanner.GeoRef
 
             while (!found && iteration < maxIteration)
             {
-                found = listLocations.ContainsKey(actualTime);
+                found = listLocations.ContainsKey(time + iteration);
                 if (found)
                 {
-                    location = listLocations[actualTime];
+                    location = listLocations[time + iteration];
                 }
                 else
                 {
-                    actualTime += millisSTEP;
+                    found = listLocations.ContainsKey(time - iteration);
+                    if (found)
+                    {
+                        location = listLocations[time - iteration];
+                    }
                     iteration++;
                 }
             }
@@ -590,18 +613,19 @@ namespace MissionPlanner.GeoRef
 
         public Dictionary<string, PictureInformation> doworkGPSOFFSET(string logFile, string dirWithImages, float offset, string UseGpsorGPS2, bool usecam, Action<string> AppendText)
         {
-            // Lets start over 
+            // Lets start over
             Dictionary<string, PictureInformation> picturesInformationTemp =
                 new Dictionary<string, PictureInformation>();
 
             // Read Vehicle Locations from log. GPS Messages. Will have to do it anyway
             if (vehicleLocations == null || vehicleLocations.Count <= 0)
             {
+                AppendText("Reading log for CAM Messages\n");
+                camLocations = readCAMMsgInLog(logFile);
+
                 if (usecam)
                 {
-                    AppendText("Reading log for CAM Messages\n");
-
-                    vehicleLocations = readCAMMsgInLog(logFile);
+                    vehicleLocations = camLocations;
                 }
                 else
                 {
@@ -714,7 +738,7 @@ namespace MissionPlanner.GeoRef
 
         public Dictionary<string, PictureInformation> doworkCAM(string logFile, string dirWithImages, string UseGpsorGPS2, Action<string> AppendText, int dropstart, int dropend)
         {
-            // Lets start over 
+            // Lets start over
             Dictionary<string, PictureInformation> picturesInformationTemp =
                 new Dictionary<string, PictureInformation>();
 
@@ -742,19 +766,32 @@ namespace MissionPlanner.GeoRef
 
             AppendText("Reading log for CAM Messages\n");
 
-            var list = readCAMMsgInLog(logFile);
+            camLocations = readCAMMsgInLog(logFile);
 
-            if (list == null)
+            if (camLocations == null)
             {
                 AppendText("Log file problem. No CAM messages. Aborting....\n");
                 return null;
             }
 
-            AppendText("Log Read with - " + list.Count + " - CAM Messages found\n");
+            AppendText("Log Read with - " + camLocations.Count + " - CAM Messages found\n");
 
-            list = list.Take(list.Count - dropend).Skip(dropstart).ToDictionary(a => a.Key, a => a.Value);
+            camLocations = camLocations.Take(camLocations.Count - dropend).Skip(dropstart).ToDictionary(a => a.Key, a => a.Value);
 
-            AppendText("Filtered - " + list.Count + " - CAM Messages found\n");
+            var deltalistv = camLocations
+                .PrevNowNext(InvalidValue: new KeyValuePair<long, VehicleLocation>(0,
+                    new VehicleLocation() { Time = DateTime.MinValue }))
+                .Select(d => ((d.Item3.Value.Time - d.Item2.Value.Time), d.Item2)).ToList();
+
+            // Find and remove all CAM messages with shutter speed less than minshutter
+            foreach (var delta in deltalistv.Where(a => a.Item1.TotalSeconds > 0 && a.Item1.TotalSeconds < minshutter))
+            {
+                AppendText("Possible Shutter speed issue - " + delta.Item1.TotalSeconds + "s\n");
+
+                camLocations.Remove(delta.Item2.Key);
+            }
+
+            AppendText("Filtered - " + camLocations.Count + " - CAM Messages found\n");
 
             AppendText("Read images\n");
 
@@ -764,21 +801,29 @@ namespace MissionPlanner.GeoRef
             AppendText("Images read : " + files.Count + "\n");
 
             // Check that we have same number of CAMs than files
-            if (files.Count != list.Count)
+            if (files.Count != camLocations.Count)
             {
-                AppendText(string.Format("CAM Msgs and Files discrepancy. Check it! files: {0} vs CAM msg: {1}\n",files.Count,list.Count));
-                return null;
+                AppendText(string.Format("CAM Msgs and Files discrepancy. Check it! files: {0} vs CAM msg: {1}\n",files.Count,camLocations.Count));
+                //return null;
             }
 
+            // load all image info
+            Parallel.ForEach(files, filename => { getPhotoTime(filename); });
+
+            // sort
             files.Sort(compareFileByPhotoTime);
 
             // Each file corresponds to one CAM message
             // We assume that picture names are in ascending order in time
             int i = -1;
-            foreach (var currentCAM in list.Values)
+            foreach (var currentCAM in camLocations.Values)
             {
                 i++;
                 PictureInformation p = new PictureInformation();
+
+                if(files.Count <= i)
+                    continue;
+
 
                 // Fill shot time in Picture
                 p.ShotTimeReportedByCamera = getPhotoTime(files[i]);
@@ -922,7 +967,7 @@ namespace MissionPlanner.GeoRef
 
         public Dictionary<string, PictureInformation> doworkTRIG(string logFile, string dirWithImages, string UseGpsorGPS2, Action<string> AppendText, int dropstart, int dropend)
         {
-            // Lets start over 
+            // Lets start over
             Dictionary<string, PictureInformation> picturesInformationTemp =
                 new Dictionary<string, PictureInformation>();
 
@@ -958,6 +1003,10 @@ namespace MissionPlanner.GeoRef
                 return null;
             }
 
+            // load all image info
+            Parallel.ForEach(files, filename => { getPhotoTime(filename); });
+
+            // sort
             files.Sort(compareFileByPhotoTime);
 
             // Each file corresponds to one CAM message
@@ -1016,7 +1065,7 @@ namespace MissionPlanner.GeoRef
 
         private void newpos(ref double lat, ref double lon, double bearing, double distance)
         {
-            // '''extrapolate latitude/longitude given a heading and distance 
+            // '''extrapolate latitude/longitude given a heading and distance
             //   thanks to http://www.movable-type.co.uk/scripts/latlong.html
             //  '''
             // from math import sin, asin, cos, atan2, radians, degrees
@@ -1089,7 +1138,7 @@ namespace MissionPlanner.GeoRef
 18 00 00 00 01 00 00 00--> 24/1
 06 02 00 00 0A 00 00 00--> 518/10
 */
-            
+
             Array.Copy(BitConverter.GetBytes((uint) d), 0, output, 0, sizeof (uint));
             Array.Copy(BitConverter.GetBytes((uint) 1), 0, output, 4, sizeof (uint));
             Array.Copy(BitConverter.GetBytes((uint) m), 0, output, 8, sizeof (uint));
@@ -1142,13 +1191,13 @@ namespace MissionPlanner.GeoRef
 
                         if (item.Tag == ExifTag.GPSLongitude || item.Tag == ExifTag.GPSLatitude ||
                             item.Tag == ExifTag.GPSAltitude || item.Tag == ExifTag.GPSLatitudeRef ||
-                            item.Tag == ExifTag.GPSLongitudeRef || item.Tag == ExifTag.MakerNote || 
+                            item.Tag == ExifTag.GPSLongitudeRef || item.Tag == ExifTag.MakerNote ||
                             item.Tag == ExifTag.ThumbnailYResolution || item.Tag == ExifTag.ThumbnailXResolution ||
                             item.Tag == ExifTag.FlashpixVersion || item.Tag == ExifTag.ThumbnailXResolution)
                             data.Properties.Remove(item);
 
                     }
-                   
+
 
                     var lon = dLong.toDMS();
                     data.Properties.Add(ExifTag.GPSLongitude, Math.Abs(lon.degrees), Math.Abs(lon.minutes), Math.Abs(lon.seconds));
@@ -1159,7 +1208,7 @@ namespace MissionPlanner.GeoRef
 
                     data.Properties.Add(ExifTag.GPSLatitudeRef, dLat < 0 ? "S" : "N");
                     data.Properties.Add(ExifTag.GPSLongitudeRef, dLong < 0 ? "W" : "E");
-                    
+
                     // Save file into Geotag folder
                     string geoTagFolder = rootFolder + Path.DirectorySeparatorChar + "geotagged";
 
@@ -1172,7 +1221,7 @@ namespace MissionPlanner.GeoRef
                         File.Delete(outputfilename);
 
                     data.Save(outputfilename);
-                  
+
                 }
                 catch
                 {
@@ -1209,6 +1258,8 @@ namespace MissionPlanner.GeoRef
                 StreamWriter swlockml = new StreamWriter(dirWithImages + Path.DirectorySeparatorChar + "location.kml"))
             using (
                 StreamWriter swloctxt = new StreamWriter(dirWithImages + Path.DirectorySeparatorChar + "location.txt"))
+            using (
+            StreamWriter swlocgeo = new StreamWriter(dirWithImages + Path.DirectorySeparatorChar + "location.geo"))
             using (
                 StreamWriter swloctel = new StreamWriter(dirWithImages + Path.DirectorySeparatorChar + "location.tel"))
             using (
@@ -1353,6 +1404,8 @@ namespace MissionPlanner.GeoRef
 
                 swloctxt.WriteLine("#name latitude/Y longitude/X height/Z yaw pitch roll SAlt");
 
+                swlocgeo.WriteLine("EPSG:4326");
+
                 AppendText?.Invoke("Start Processing\n");
 
                 // Dont know why but it was 10 in the past so let it be. Used to generate jxl file simulating x100 from trimble
@@ -1418,7 +1471,7 @@ namespace MissionPlanner.GeoRef
                     /* using (StreamWriter swjpw = new StreamWriter(dirWithImages + Path.DirectorySeparatorChar + Path.GetFileNameWithoutExtension(filename) + ".jgw"))
                         {
                             swjpw.WriteLine((rect.Height / 2448.0).ToString("0.00000000000000000"));
-                            swjpw.WriteLine((0).ToString("0.00000000000000000")); // 
+                            swjpw.WriteLine((0).ToString("0.00000000000000000")); //
                             swjpw.WriteLine((0).ToString("0.00000000000000000")); //
                             swjpw.WriteLine((rect.Width / -3264.0).ToString("0.00000000000000000")); // distance per pixel
                             swjpw.WriteLine((rect.Left).ToString("0.00000000000000000"));
@@ -1468,6 +1521,8 @@ namespace MissionPlanner.GeoRef
                                        picInfo.Lon + "\t" + picInfo.Lat + "\t" + picInfo.getAltitude(useAMSLAlt, usegpsalt));
                     swloctel.Flush();
                     swloctxt.Flush();
+
+                    swlocgeo.WriteLine($"{filename} {picInfo.Lon.ToString(CultureInfo.InvariantCulture)} {picInfo.Lat.ToString(CultureInfo.InvariantCulture)} {picInfo.getAltitude(useAMSLAlt, usegpsalt).ToString(CultureInfo.InvariantCulture)} 0 0 0 10 10");
 
                     lastRecordN = GenPhotoStationRecord(swloctrim, picInfo.Path, picInfo.Lat, picInfo.Lon,
                         picInfo.getAltitude(useAMSLAlt, usegpsalt), 0, 0, picInfo.Yaw, picInfo.Width, picInfo.Height, lastRecordN);

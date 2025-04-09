@@ -1,31 +1,33 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
-using System.Windows.Media.Imaging;
 
 namespace Aberus.VisualStudio.Debugger.ImageVisualizer
 {
     [Serializable]
     public class SerializableBitmapImage : ISerializable
     {
-        public BitmapSource bitmapSource;
-        private readonly string expression;
+        public byte[] Image { get; private set; }
 
-        public BitmapImage Image { get; private set; }
-
-        public SerializableBitmapImage(BitmapImage image)
+        public SerializableBitmapImage(byte[] image)
         {
+            Debug.WriteLine("SerializableBitmapImage(byte[] image) Length " + image.Length);
             this.Image = image;
         }
 
-        public SerializableBitmapImage(BitmapSource source)
+        public SerializableBitmapImage(Stream image)
         {
-            bitmapSource = source;
+            Debug.WriteLine("SerializableBitmapImage(Stream image) Length " + image.Length);
+            var ms = new MemoryStream();
+            image.CopyTo(ms);
+            this.Image = ms.ToArray();
         }
 
         protected SerializableBitmapImage(SerializationInfo info, StreamingContext context)
         {
+            Debug.WriteLine("SerializableBitmapImage(SerializationInfo info, StreamingContext context)");
             foreach (var i in info)
             {
                 if (string.Equals(i.Name, "Image", StringComparison.OrdinalIgnoreCase))
@@ -34,15 +36,7 @@ namespace Aberus.VisualStudio.Debugger.ImageVisualizer
                     {
                         if (i.Value is byte[] array)
                         {
-                            var stream = new MemoryStream(array);
-                            stream.Seek(0, SeekOrigin.Begin);
-
-                            Image = new BitmapImage();
-                            Image.CacheOption = BitmapCacheOption.OnLoad;
-                            Image.BeginInit();
-                            Image.StreamSource = stream;
-                            Image.EndInit();
-                            Image.Freeze();
+                            Image = (byte[])i.Value;
                         }
                     }
                     catch (ExternalException)
@@ -66,47 +60,36 @@ namespace Aberus.VisualStudio.Debugger.ImageVisualizer
                 }
                 else if(string.Equals(i.Name, "Name", StringComparison.OrdinalIgnoreCase))
                 {
-                    expression = (string)i.Value;
+                    
                 }
             }
         }
 
-        public static implicit operator SerializableBitmapImage(BitmapImage bitmapImage)
+        public static implicit operator SerializableBitmapImage(byte[] bitmapImage)
         {
             return new SerializableBitmapImage(bitmapImage);
         }
 
-        public static implicit operator BitmapImage(SerializableBitmapImage serializableBitmapImage)
+        public static implicit operator byte[](SerializableBitmapImage serializableBitmapImage)
         {
             return serializableBitmapImage.Image;
         }
 
-        //[SecurityPermission(SecurityAction.LinkDemand, Flags = SecurityPermissionFlag.SerializationFormatter)]
         void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
         {
-            var source = Image ?? bitmapSource;
-
-            if (source != null)
+            Debug.WriteLine("ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)");
             {
                 using (var memoryStream = new MemoryStream())
                 {
-                    var encoder = new PngBitmapEncoder();
-                    encoder.Frames.Add(BitmapFrame.Create(source));
-                    encoder.Save(memoryStream);
-                    memoryStream.Seek(0, SeekOrigin.Begin);
-
-                    info.AddValue("Image", memoryStream.ToArray(), typeof(byte[]));
+                    info.AddValue("Image", Image, typeof(byte[]));
                 }
 
-                info.AddValue("Name", source.ToString());
+                info.AddValue("Name", "Names");
             }
         }
 
         public override string ToString()
         {
-            if (!string.IsNullOrEmpty(expression))
-                return expression;
-
             return base.ToString();
         }
     }

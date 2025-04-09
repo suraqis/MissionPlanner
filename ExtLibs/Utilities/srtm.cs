@@ -9,6 +9,7 @@ using System.Collections;
 using System.Net.Http;
 using System.Threading.Tasks;
 using log4net;
+using GMap.NET;
 
 namespace MissionPlanner.Utilities
 {
@@ -61,25 +62,36 @@ namespace MissionPlanner.Utilities
 
         static Dictionary<string, short[,]> cache = new Dictionary<string, short[,]>();
 
-        static Dictionary<int, string> filenameDictionary = new Dictionary<int, string>();
+
+        static Dictionary<int, string> _filenameDictionary = new Dictionary<int, string>();
+
+        private static Func<int, int, string> filenameDictionary = (x, y) =>
+        {
+            int id = y * 1000 + x;
+            lock (_filenameDictionary)
+                if (_filenameDictionary.ContainsKey(id))
+                    return _filenameDictionary[id];
+
+            if (y < -90 || y > 90)
+                return "";
+
+            if (x < -180 || x > 180)
+                return "";
+
+            var sy = Math.Abs(y).ToString("00");
+
+            var sx = Math.Abs(x).ToString("000");
+
+            lock (_filenameDictionary)
+                _filenameDictionary[id] = string.Format("{0}{1}{2}{3}{4}", y >= 0 ? "N" : "S", sy,
+                    x >= 0 ? "E" : "W", sx, ".hgt");
+
+            return _filenameDictionary[id];
+        };
 
         static srtm()
         {
             log.Info(".cctor");
-
-            // running tostring at a high rate was costing cpu
-            for (int y = -90; y <= 90; y++)
-            {
-                var sy = Math.Abs(y).ToString("00");
-
-                for (int x = -180; x <= 180; x++)
-                {
-                    var sx = Math.Abs(x).ToString("000");
-
-                    filenameDictionary[y*1000 + x] = string.Format("{0}{1}{2}{3}{4}", y >= 0 ? "N" : "S", sy,
-                        x >= 0 ? "E" : "W", sx, ".hgt");
-                }
-            }
 
             if (!String.IsNullOrEmpty(Settings.Instance.UserAgent))
                 client.DefaultRequestHeaders.Add("User-Agent", Settings.Instance.UserAgent);
@@ -94,14 +106,9 @@ namespace MissionPlanner.Utilities
 
             int id = y*1000 + x;
 
-            if (filenameDictionary.ContainsKey(id))
-            {
-                string filename = filenameDictionary[y*1000 + x];
+            string filename = filenameDictionary(x, y);
 
-                return filename;
-            }
-
-            return "";
+            return filename;
         }
 
         public static altresponce getAltitude(double lat, double lng, double zoom = 16)
@@ -154,15 +161,6 @@ namespace MissionPlanner.Utilities
 
             try
             {
-                // prevent looking for files that dont exist and are common
-                if (filename.Contains("00W000") || filename.Contains("00W001") ||
-                    filename.Contains("01W000") || filename.Contains("01W001") ||
-                    filename.Contains("00E000") || filename.Contains("00E001") ||
-                    filename.Contains("01E000") || filename.Contains("01E001"))
-                {
-                    return altresponce.Ocean;
-                }
-
                 // marked as a oceantile
                 if (oceantile.Contains(filename))
                     return altresponce.Ocean;
@@ -377,23 +375,23 @@ namespace MissionPlanner.Utilities
                 }
                 else // get something
                 {
-                    if(lat >= 61) // srtm data only goes to 60N
-                        return altresponce.Invalid;
-
                     if (zoom >= 7)
                     {
                         if (!Directory.Exists(datadirectory))
                             Directory.CreateDirectory(datadirectory);
 
-                        lock (objlock)
+                        if (GMaps.Instance.Mode != AccessMode.CacheOnly)
                         {
-                            if (!queue.Contains(filename))
+                            lock (objlock)
                             {
-                                log.Info("Getting " + filename);
-                                queue.Add(filename);
+                                if (!queue.Contains(filename))
+                                {
+                                    log.Info("Getting " + filename);
+                                    queue.Add(filename);
+                                    requestSemaphore.Release();
+                                }
                             }
                         }
-
                     }
                 }
             }
@@ -408,10 +406,7 @@ namespace MissionPlanner.Utilities
 
         private static void StartQueueProcess()
         {
-            requestThread = new Thread(requestRunner);
-            requestThread.IsBackground = true;
-            requestThread.Name = "SRTM request runner";
-            requestThread.Start();
+            requestRunner();
         }
 
         static double GetAlt(string filename, int x, int y)
@@ -524,7 +519,9 @@ namespace MissionPlanner.Utilities
             }
         }
 
-        static async void requestRunner()
+        static SemaphoreSlim requestSemaphore = new SemaphoreSlim(1);
+
+        static async Task requestRunner()
         {
             log.Info("requestRunner start");
 
@@ -534,6 +531,8 @@ namespace MissionPlanner.Utilities
             {
                 try
                 {
+                    await requestSemaphore.WaitAsync(30000).ConfigureAwait(false);
+
                     string item = "";
                     lock (objlock)
                     {
@@ -546,10 +545,16 @@ namespace MissionPlanner.Utilities
                     if (item != "")
                     {
                         log.Info(item);
-                        await get3secfile(item);
+                        await get3secfile(item).ConfigureAwait(false);
                         lock (objlock)
                         {
                             queue.Remove(item);
+
+                            // continue without delay
+                            if (queue.Count > 0)
+                            {
+                                requestSemaphore.Release();
+                            }
                         }
                     }
                 }
@@ -558,7 +563,15 @@ namespace MissionPlanner.Utilities
                     log.Error(ex);
                 }
 
-                await Task.Delay(1000);
+                // never more than 1/s
+                try
+                {
+                    await Task.Delay(1000).ConfigureAwait(false);
+                }
+                catch
+                {
+
+                }
             }
         }
 
@@ -576,15 +589,17 @@ namespace MissionPlanner.Utilities
             List<string> list = new List<string>();
 
             // load 1 arc seconds first
-            //list.AddRange(getListing(baseurl1sec));
+            list.Add(baseurl1sec);
+            log.Info("srtm1sec " + list.Count);
             // load 3 arc second
-            list.AddRange(await getListing(baseurl));
+            list.AddRange(await getListing(baseurl).ConfigureAwait(false));
+            log.Info("srtm1esc+3sec " + list.Count);
 
             foreach (string item in list)
             {
                 List<string> hgtfiles = new List<string>();
 
-                hgtfiles = await getListing(item);
+                hgtfiles = await getListing(item).ConfigureAwait(false);
 
                 foreach (string hgt in hgtfiles)
                 {
@@ -593,24 +608,24 @@ namespace MissionPlanner.Utilities
                     {
                         // get file
 
-                        await gethgt(hgt, (string) name);
+                        await gethgt(hgt, (string) name).ConfigureAwait(false);
                         return;
                     }
                 }
             }
 
-            // if there are no http exceptions, and the list is >= 20, then everything above is valid
-            // 15760 is all srtm3 and srtm1
-            if (list.Count >= 12 && checkednames > 14000 && !oceantile.Contains((string) name))
+            // if there are no http exceptions, and the list is >= 9, then everything above is valid
+            // 38581 is all srtm3 and srtm1
+            if (list.Count >= 9 && checkednames > 38000 && !oceantile.Contains((string) name))
             {
                 // we must be an ocean tile - no matchs
                 oceantile.Add((string) name);
             }
         }
 
-        public static string baseurl1sec { get; set; }= "https://firmware.ardupilot.org/SRTM/USGS/SRTM1/version2_1/SRTM1/";
+        public static string baseurl1sec { get; set; }= "https://terrain.ardupilot.org/SRTM1/";
 
-        public static string baseurl { get; set; }= "https://firmware.ardupilot.org/SRTM/";
+        public static string baseurl { get; set; }= "https://terrain.ardupilot.org/SRTM3/";
 
         static HttpClient client = new HttpClient();
 
@@ -620,19 +635,19 @@ namespace MissionPlanner.Utilities
             {
                 log.Info("Get " + url);
 
-                using (var res = await client.GetAsync(url))
-                using (Stream resstream = await res.Content.ReadAsStreamAsync())
+                using (var res = await client.GetAsync(url).ConfigureAwait(false))
+                using (Stream resstream = await res.Content.ReadAsStreamAsync().ConfigureAwait(false))
                 using (
                     BinaryWriter bw =
                         new BinaryWriter(File.Create(datadirectory + Path.DirectorySeparatorChar + filename + ".zip")))
                 {
-                    byte[] buf1 = new byte[1024];
+                    byte[] buf1 = new byte[1024*4];
 
                     int size = 0;
 
                     while (resstream.CanRead)
                     {
-                        int len = await resstream.ReadAsync(buf1, 0, 1024);
+                        int len = await resstream.ReadAsync(buf1, 0, buf1.Length).ConfigureAwait(false);
                         if (len == 0)
                             break;
                         bw.Write(buf1, 0, len);
@@ -691,11 +706,11 @@ namespace MissionPlanner.Utilities
             {
                 log.Info("srtm req " + url);
 
-                using (var res = await client.GetAsync(url))
-                using (StreamReader resstream = new StreamReader(await res.Content.ReadAsStreamAsync()))
+                using (var res = await client.GetAsync(url).ConfigureAwait(false))
+                using (StreamReader resstream = new StreamReader(await res.Content.ReadAsStreamAsync().ConfigureAwait(false)))
                 {
 
-                    string data = await resstream.ReadToEndAsync();
+                    string data = await resstream.ReadToEndAsync().ConfigureAwait(false);
 
                     Regex regex = new Regex("href=\"([^\"]+)\"", RegexOptions.IgnoreCase);
                     if (regex.IsMatch(data))

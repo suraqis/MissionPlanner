@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.Security.Cryptography.X509Certificates;
 using SkiaSharp;
 
@@ -50,21 +51,54 @@ namespace System.Drawing
             return pen.nativePen;
         }
 
+        public static Bitmap ToBitmap(this SKImage skiaImage)
+        {
+            return new Bitmap() {nativeSkBitmap = SKBitmap.FromImage(skiaImage)};
+        }
+
+        public static SKTypeface ToSKTypeface(this FontFamily ff)
+        {
+            var fm = SKFontManager.Default;
+            var id = "";
+            lock (fontcache)
+                if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh")
+                {
+                    id = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[CultureInfo.CurrentUICulture.TwoLetterISOLanguageName] =
+                            fm.MatchCharacter("YaHei", new[] { "zh" }, '飞');
+                }
+                else if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ja")
+                {
+                    id = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[CultureInfo.CurrentUICulture.TwoLetterISOLanguageName] =
+                            fm.MatchCharacter("", new[] { "ja" }, 'フ');
+                }
+                else if (CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "kr")
+                {
+                    id = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[CultureInfo.CurrentUICulture.TwoLetterISOLanguageName] =
+                            fm.MatchCharacter("", new[] { "kr" }, '비');
+                }
+                else
+                {
+                    if (!fontcache.ContainsKey(id))
+                        fontcache[id] = SKTypeface.FromFamilyName(id);
+                }
+
+            return fontcache[id];
+        }
 
         static Dictionary<string, SKTypeface> fontcache = new Dictionary<string, SKTypeface>();
 
         public static SKPaint ToSKPaint(this Font font)
         {
-            lock (fontcache)
-            {
-                if (!fontcache.ContainsKey(font.Name))
-                    fontcache[font.Name] = SKTypeface.FromFamilyName(font.Name);
-            }
-
             return new SKPaint
             {
-                Typeface = fontcache[font.Name],
-                TextSize = font.Size,
+                Typeface = font.FontFamily.ToSKTypeface(),
+                TextSize = font.SizeInPoints * 1.33334f,
                 StrokeWidth = 2,
             };
         }

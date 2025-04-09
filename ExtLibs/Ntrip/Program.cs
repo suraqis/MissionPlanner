@@ -7,9 +7,10 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net.Sockets;
 using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using UAVCAN;
+using DroneCAN;
 
 namespace Ntrip
 {
@@ -38,7 +39,7 @@ namespace Ntrip
 
             var ubx = new Ubx();
             var rtcm = new rtcm3();
-            var can = new UAVCAN.uavcan();
+            var can = new DroneCAN.DroneCAN();
             Stream file = null;
             DateTime filetime = DateTime.MinValue;
             SerialPort port = null;
@@ -53,9 +54,9 @@ namespace Ntrip
             // feed the rtcm data into the rtcm parser if we get a can message
             can.MessageReceived += (frame, msg, id) =>
             {
-                if (frame.MsgTypeID == (ushort)uavcan.UAVCAN_EQUIPMENT_GNSS_RTCMSTREAM_DT_ID)
+                if (frame.MsgTypeID == (ushort)DroneCAN.DroneCAN.uavcan_equipment_gnss_RTCMStream.UAVCAN_EQUIPMENT_GNSS_RTCMSTREAM_DT_ID)
                 {
-                    var rtcmcan = (uavcan.uavcan_equipment_gnss_RTCMStream)msg;
+                    var rtcmcan = (DroneCAN.DroneCAN.uavcan_equipment_gnss_RTCMStream)msg;
 
                     for (int a = 0; a < rtcmcan.data_len; a++)
                     {
@@ -137,7 +138,7 @@ namespace Ntrip
                                 gotRTCMData?.Invoke(rtcm.packet, rtcm.length);
                                 file.Write(rtcm.packet, 0, rtcm.length);
                             }
-                            if ((by >= 0 && can.Read(by) > 0))// can_rtcm
+                            if ((by >= 0 && can.ReadSLCAN(by) > 0))// can_rtcm
                             {
                                 ubx.resetParser();
                             }
@@ -154,7 +155,7 @@ namespace Ntrip
                                 port.Close();
                                 port = null;
                             }
-                            catch (Exception ex)
+                            catch (Exception)
                             {
                                 port = null;
                             }
@@ -211,8 +212,20 @@ namespace Ntrip
                 };
                 try
                 {
-                    Program.gotRTCMData += func;
+                    var request = new StreamReader(client.GetStream(), Encoding.ASCII).ReadLine();
 
+                    if (request.Contains(" / "))
+                    {
+                        var data2 =
+                            "SOURCETABLE 200 OK\r\nContent-Type: text/plain\r\n\r\nSTR;DEFAULT;Default;RTCM 3.2;;2;GPS+GLO+GLO+BDS;MP;;0.00;0.00;0;0;sNTRIP;none;N;N;0;none;\r\nENDSOURCETABLE\r\n\r\n"
+                                .Select(a => (byte) a).ToArray();
+                        client.GetStream().Write(data2, 0, data2.Length);
+                        client.Close();
+                        return;
+                    }
+
+                    Program.gotRTCMData += func;
+                    
                     var data = "ICY 200 OK\r\n\r\n".Select(a => (byte)a).ToArray();
                     client.GetStream().Write(data, 0, data.Length);
 

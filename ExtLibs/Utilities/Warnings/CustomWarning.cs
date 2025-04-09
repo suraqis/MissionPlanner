@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 
 namespace MissionPlanner.Warnings
 {
@@ -20,6 +21,27 @@ namespace MissionPlanner.Warnings
             GT,
             GTEQ,
             NEQ
+        }
+
+        public enum WarningColors
+        {
+            NoColor = 0,
+            Red,
+            OrangeRed,
+            Maroon,
+            Yellow,
+            Gold,
+            Goldenrod,
+            LawnGreen,
+            Green,
+            DarkGreen
+        }
+
+        // Differentiate between speak/text and QV Coloring items
+        public enum WarningType
+        {
+            SpeakAndText = 0,
+            Coloring
         }
 
         public CustomWarning()
@@ -94,6 +116,16 @@ namespace MissionPlanner.Warnings
         DateTime lastrepeat;
 
         /// <summary>
+        /// identify the type of warning  (SpeakAndText or Coloring)
+        /// </summary>
+        public WarningType type { get; set; }
+
+        /// <summary>
+        /// this color is used when warning fired
+        /// </summary>
+        public string color { get; set; }
+
+        /// <summary>
         /// in seconds
         /// </summary>
         public int RepeatTime { get; set; }
@@ -151,40 +183,45 @@ namespace MissionPlanner.Warnings
             if (userepeattime && DateTime.Now < lastrepeat.AddSeconds(RepeatTime))
                 return false;
 
-            lastrepeat = DateTime.Now;
+            bool condition = false;
 
             switch (ConditionType)
             {
                 case Conditional.EQ:
                     if (GetValue == Warning)
-                        return true;
+                        condition = true;
                     break;
                 case Conditional.GT:
                     if (GetValue > Warning)
-                        return true;
+                        condition = true;
                     break;
                 case Conditional.GTEQ:
                     if (GetValue >= Warning)
-                        return true;
+                        condition = true;
                     break;
                 case Conditional.LT:
                     if (GetValue < Warning)
-                        return true;
+                        condition = true;
                     break;
                 case Conditional.LTEQ:
                     if (GetValue <= Warning)
-                        return true;
+                        condition = true;
                     break;
                 case Conditional.NEQ:
                     if (GetValue != Warning)
-                        return true;
+                        condition = true;
                     break;
                 case Conditional.NONE:
 
                     break;
             }
 
-            return false;
+            if (condition)
+            {
+                lastrepeat = DateTime.Now;
+            }
+
+            return condition;
         }
 
 

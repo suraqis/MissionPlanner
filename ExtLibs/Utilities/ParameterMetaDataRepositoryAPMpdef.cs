@@ -20,21 +20,72 @@ namespace MissionPlanner.Utilities
 
         private static Dictionary<string,XDocument> _parameterMetaDataXML = new Dictionary<string, XDocument>();
 
-        static string[] vehicles = new[] { "Copter", "Plane", "Rover", "Tracker" };
+        private static string[] vehicles = new[]
+        {
+             "SITL", "AP_Periph", "ArduSub", "Rover", "ArduCopter",
+            "ArduPlane", "AntennaTracker", "Blimp", "Heli"      
+        };
+
+        private static string[] vehicles_versioned = new[] 
+        {
+            "Copter", "Plane", "Rover", "Sub", "Tracker"
+        };
 
         static string url = "https://autotest.ardupilot.org/Parameters/{0}/apm.pdef.xml.gz";
 
+        static string urlversioned = "https://autotest.ardupilot.org/Parameters/versioned/{0}/stable-{1}/apm.pdef.xml";
+
+        static ParameterMetaDataRepositoryAPMpdef()
+        {
+            GetMetaData();
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ParameterMetaDataRepository"/> class.
         /// </summary>
         public static void CheckLoad(string vehicle = "")
         {
-            if (_parameterMetaDataXML[vehicle] == null)
+            if (!_parameterMetaDataXML.ContainsKey(vehicle))
                 Reload(vehicle);
         }
 
-        public static async Task GetMetaData()
+        public static async Task GetMetaDataVersioned(Version version)
+        {
+            List<Task> tlist = new List<Task>();
+
+            vehicles_versioned.ForEach(a =>
+            {
+                try
+                {
+                    var newurl = String.Format(urlversioned, a, version.ToString());
+                    var file = Path.Combine(Settings.GetDataDirectory(), a + version.ToString() + ".apm.pdef.xml");
+                    if (File.Exists(file))
+                        if (new FileInfo(file).LastWriteTime.AddDays(7) > DateTime.Now)
+                            return;
+                    var dltask = Download.getFilefromNetAsync(newurl, file);
+                    tlist.Add(dltask);
+                }
+                catch (Exception ex) { log.Error(ex); }
+            });
+
+            await Task.WhenAll(tlist);
+
+            vehicles_versioned.ForEach(a =>
+            {
+                try
+                {
+                    Reload(a + version.ToString());
+
+                    var veh = vehicles.First(b => b.Contains(a));
+
+                    if(_parameterMetaDataXML.ContainsKey(a + version.ToString()))
+                        _parameterMetaDataXML[veh] = _parameterMetaDataXML[a + version.ToString()];
+                }
+                catch (Exception ex) { log.Error(ex); }
+            });
+        }
+
+        public static async Task GetMetaData(bool force = false)
         {
             List<Task> tlist = new List<Task>();
 
@@ -45,7 +96,7 @@ namespace MissionPlanner.Utilities
                     var newurl = String.Format(url, a);
                     var file = Path.Combine(Settings.GetDataDirectory(), a + ".apm.pdef.xml.gz");
                     if(File.Exists(file))
-                        if (new FileInfo(file).LastWriteTime.AddDays(7) > DateTime.Now)
+                        if (new FileInfo(file).LastWriteTime.AddDays(7) > DateTime.Now && !force)
                             return;
                     var dltask = Download.getFilefromNetAsync(newurl, file);
                     tlist.Add(dltask);
@@ -60,6 +111,7 @@ namespace MissionPlanner.Utilities
                 try
                 {
                     var fileout = Path.Combine(Settings.GetDataDirectory(), a + ".apm.pdef.xml");
+                    var fileouttemp = Path.Combine(Path.GetTempFileName());
                     var file = Path.Combine(Settings.GetDataDirectory(), a + ".apm.pdef.xml.gz");
                     if (File.Exists(file))
                         using (var read = File.OpenRead(file))
@@ -69,10 +121,13 @@ namespace MissionPlanner.Utilities
                                 read.Position = 0;
                                 var stream = new GZipStream(read, CompressionMode.Decompress);
                                 //var stream = new XZStream(read);
-                                using (var outst = File.OpenWrite(fileout))
+                                using (var outst = File.Open(fileouttemp, FileMode.Create))
                                 {
                                     stream.CopyTo(outst);
                                 }
+                                // move after good decompress
+                                File.Delete(fileout);
+                                File.Move(fileouttemp, fileout);
                             }
                         }
                 }
@@ -81,12 +136,19 @@ namespace MissionPlanner.Utilities
                     log.Error(ex);
                 }
             });
+
+            Reset();
+        }
+
+        public static void Reset()
+        {
+            _parameterMetaDataXML.Clear();
         }
 
         public static void Reload(string vehicle = "")
         {
             string paramMetaDataXMLFileName =
-                String.Format("{0}{1}", Settings.GetUserDataDirectory(), vehicle + ".apm.pdef.xml");
+                String.Format("{0}{1}", Settings.GetDataDirectory(), vehicle + ".apm.pdef.xml");
 
             try
             {
@@ -112,7 +174,7 @@ namespace MissionPlanner.Utilities
             if (vechileType == "ArduCopter2")
                 vechileType = "ArduCopter";
             if (vechileType == "ArduRover")
-                vechileType = "APMrover2";
+                vechileType = "Rover";
             if (vechileType == "ArduTracker")
                 vechileType = "AntennaTracker";
 
@@ -126,10 +188,11 @@ namespace MissionPlanner.Utilities
             if (metaKey == ParameterMetaDataConstants.User)
                 metaKey = "user";
 
-            if (_parameterMetaDataXML[vechileType] != null)
+            if (_parameterMetaDataXML.ContainsKey(vechileType))
             {
                 try
                 {
+                    var vechileKey = vechileType + ":" + nodeKey;
                     foreach (var paramfile in _parameterMetaDataXML[vechileType].Element("paramfile").Elements())
                     {
                         foreach (var parameters in paramfile.Elements())
@@ -138,7 +201,7 @@ namespace MissionPlanner.Utilities
                             {
                                 foreach (var param in parameters.Elements())
                                 {
-                                    if (param.Attribute("name").Value == (vechileType + ":" + nodeKey) ||
+                                    if (param.Attribute("name").Value == vechileKey ||
                                         param.Attribute("name").Value == nodeKey)
                                     {
                                         if (param.Attribute(metaKey) != null)

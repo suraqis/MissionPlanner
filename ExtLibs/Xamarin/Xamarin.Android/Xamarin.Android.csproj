@@ -16,13 +16,14 @@
     <MonoAndroidResourcePrefix>Resources</MonoAndroidResourcePrefix>
     <MonoAndroidAssetsPrefix>Assets</MonoAndroidAssetsPrefix>
     <AndroidUseLatestPlatformSdk>false</AndroidUseLatestPlatformSdk>
-    <TargetFrameworkVersion>v10.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v13.0</TargetFrameworkVersion>
     <Deterministic>True</Deterministic>
     <AndroidHttpClientHandlerType>Xamarin.Android.Net.AndroidClientHandler</AndroidHttpClientHandlerType>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
     <AndroidKeyStore>false</AndroidKeyStore>
     <Deterministic>false</Deterministic>
+    <PackageTargetFallback>$(PackageTargetFallback);net20</PackageTargetFallback>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -36,17 +37,17 @@
     <AotAssemblies>false</AotAssemblies>
     <EnableLLVM>false</EnableLLVM>
     <BundleAssemblies>false</BundleAssemblies>
-    <AndroidSupportedAbis>armeabi-v7a;x86</AndroidSupportedAbis>
+    <AndroidSupportedAbis>armeabi-v7a;x86;arm64-v8a</AndroidSupportedAbis>
     <AndroidStoreUncompressedFileExtensions>
     </AndroidStoreUncompressedFileExtensions>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
     <MandroidI18n>West</MandroidI18n>
-    <AndroidUseSharedRuntime>false</AndroidUseSharedRuntime>
+    <AndroidUseSharedRuntime>true</AndroidUseSharedRuntime>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <AndroidUseAapt2>true</AndroidUseAapt2>
-    <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
+    <AndroidCreatePackagePerAbi>true</AndroidCreatePackagePerAbi>
     <AndroidEnableMultiDex>false</AndroidEnableMultiDex>
-    <AndroidHttpClientHandlerType>System.Net.Http.HttpClientHandler</AndroidHttpClientHandlerType>
+    <AndroidHttpClientHandlerType>Xamarin.Android.Net.AndroidClientHandler</AndroidHttpClientHandlerType>
     <AndroidDexTool>d8</AndroidDexTool>
     <AndroidEnableSGenConcurrent>false</AndroidEnableSGenConcurrent>
     <GenerateSerializationAssemblies>Off</GenerateSerializationAssemblies>
@@ -60,6 +61,7 @@
     </AndroidSigningKeyAlias>
     <AndroidSigningKeyPass>
     </AndroidSigningKeyPass>
+    <AndroidLinkTool>r8</AndroidLinkTool>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugSymbols>false</DebugSymbols>
@@ -70,16 +72,16 @@
     <WarningLevel>4</WarningLevel>
     <AndroidManagedSymbols>true</AndroidManagedSymbols>
     <AndroidUseSharedRuntime>false</AndroidUseSharedRuntime>
-    <MandroidI18n>West</MandroidI18n>
+    <MandroidI18n>CJK;Mideast;Rare;West;Other</MandroidI18n>
     <AotAssemblies>false</AotAssemblies>
     <EnableLLVM>false</EnableLLVM>
     <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
     <BundleAssemblies>false</BundleAssemblies>
-    <AndroidHttpClientHandlerType>System.Net.Http.HttpClientHandler</AndroidHttpClientHandlerType>
+    <AndroidHttpClientHandlerType>Xamarin.Android.Net.AndroidClientHandler</AndroidHttpClientHandlerType>
     <AndroidKeyStore>false</AndroidKeyStore>
-    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidPackageFormat>aab</AndroidPackageFormat>
     <AndroidUseAapt2>true</AndroidUseAapt2>
-    <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
+    <AndroidCreatePackagePerAbi>true</AndroidCreatePackagePerAbi>
     <AndroidSigningKeyStore>
     </AndroidSigningKeyStore>
     <AndroidSigningStorePass>
@@ -91,32 +93,33 @@
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
     <AndroidSupportedAbis>armeabi-v7a;x86;x86_64;arm64-v8a</AndroidSupportedAbis>
     <AndroidEnableMultiDex>true</AndroidEnableMultiDex>
+    <AndroidEnableSGenConcurrent>false</AndroidEnableSGenConcurrent>
+    <AndroidStoreUncompressedFileExtensions>
+    </AndroidStoreUncompressedFileExtensions>
+    <AndroidLinkTool>r8</AndroidLinkTool>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="DotSpatial.Projections">
+      <HintPath>..\..\DotSpatial.Projections.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Mono.Android" />
     <Reference Include="Mono.Android.Export" />
+    <Reference Include="Mono.CompilerServices.SymbolWriter" />
+    <Reference Include="Mono.CSharp" />
     <Reference Include="Mono.Posix" />
-    <Reference Include="OpenTK-1.0" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Net" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Font">
-      <Version>0.3.0.3</Version>
+    <PackageReference Include="Newtonsoft.Json">
+      <Version>13.0.3</Version>
     </PackageReference>
     <PackageReference Include="SkiaSharp.Views">
       <Version>2.80.2</Version>
     </PackageReference>
     <PackageReference Include="SkiaSharp.Views.Forms">
       <Version>2.80.2</Version>
-    </PackageReference>
-    <PackageReference Include="System.IO.Ports">
-      <Version>4.7.0</Version>
     </PackageReference>
     <PackageReference Include="System.Security.Permissions">
       <Version>4.7.0</Version>
@@ -134,9 +137,9 @@
       <Version>1.1.0.1</Version>
     </PackageReference>
     <PackageReference Include="Xamarin.AndroidX.MediaRouter">
-      <Version>1.1.0.4</Version>
+      <Version>1.1.0.5</Version>
     </PackageReference>
-    <PackageReference Include="Xamarin.Forms" Version="4.8.0.1451" />
+    <PackageReference Include="Xamarin.Forms" Version="5.0.0.2012" />
     <PackageReference Include="Xamarin.Android.Support.Design" Version="28.0.0.3" />
     <PackageReference Include="Xamarin.Android.Support.v7.AppCompat" Version="28.0.0.3" />
     <PackageReference Include="Xamarin.Android.Support.v4" Version="28.0.0.3" />
@@ -144,34 +147,33 @@
     <PackageReference Include="Xamarin.Android.Support.v7.MediaRouter" Version="28.0.0.3" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AbstractUnixEndPoint.cs" />
     <Compile Include="AndroidSerial.cs" />
+    <Compile Include="AndroidVideo.cs" />
+    <Compile Include="BTDevice.cs" />
+    <Compile Include="BluetoothDiscoveryModeArgs.cs" />
+    <Compile Include="DeviceDiscoveredReceiver.cs" />
+    <Compile Include="DiscoverableModeReceiver.cs" />
     <Compile Include="FormsVideoLibrary\VideoPicker.cs" />
     <Compile Include="FormsVideoLibrary\VideoPlayerRenderer.cs" />
     <Compile Include="MainActivity.cs" />
     <Compile Include="Radio.cs" />
     <Compile Include="Resources\Resource.designer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SysProp.cs" />
     <Compile Include="UsbDeviceReceiver.cs" />
     <Compile Include="USBDevices.cs" />
   </ItemGroup>
   <ItemGroup>
-    <AndroidNativeLibrary Include="lib\arm64-v8a\libarduplane.so" />
-    <AndroidNativeLibrary Include="lib\arm64-v8a\libardurover.so" />
-    <AndroidNativeLibrary Include="lib\arm64-v8a\libardusub.so" />
-    <AndroidNativeLibrary Include="lib\arm64-v8a\libarducopter.so" />
+    <None Include="lib\arm64-v8a\libarduplane.so" />
+    <None Include="lib\arm64-v8a\libardurover.so" />
+    <None Include="lib\arm64-v8a\libardusub.so" />
+    <None Include="lib\arm64-v8a\libarducopter.so" />
     <AndroidNativeLibrary Include="lib\armeabi-v7a\libarducopter.so" />
     <AndroidNativeLibrary Include="lib\armeabi-v7a\libarduplane.so" />
     <AndroidNativeLibrary Include="lib\armeabi-v7a\libardurover.so" />
     <AndroidNativeLibrary Include="lib\armeabi-v7a\libardusub.so" />
-    <AndroidResource Include="..\..\..\airports.csv">
-      <Link>Resources\raw\airports.csv</Link>
-    </AndroidResource>
-    <AndroidResource Include="..\..\..\BurntKermit.mpsystheme">
-      <Link>Resources\raw\BurntKermit.mpsystheme</Link>
-    </AndroidResource>
-    <AndroidResource Include="..\..\..\HighContrast.mpsystheme">
-      <Link>Resources\raw\HighContrast.mpsystheme</Link>
-    </AndroidResource>
+    <AndroidNativeLibrary Include="lib\x86\libarducopter.so" />
     <None Include="Resources\AboutResources.txt" />
     <None Include="Assets\AboutAssets.txt" />
     <None Include="Properties\AndroidManifest.xml" />
@@ -200,15 +202,16 @@
     <Folder Include="Resources\drawable-xxhdpi\" />
     <Folder Include="Resources\drawable-xxxhdpi\" />
     <Folder Include="Resources\drawable\" />
+    <Folder Include="Resources\raw\" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\ArduPilot\MissionPlanner.ArduPilot.csproj">
       <Project>{ca6345d3-7a6d-478b-a0ed-a58e50dcaa83}</Project>
       <Name>MissionPlanner.ArduPilot</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\Comms\MissionPlanner.Comms.csproj">
-      <Project>{825E7A10-390C-4A2B-B3A8-491D14966912}</Project>
-      <Name>MissionPlanner.Comms</Name>
+    <ProjectReference Include="..\..\GMap.NET.Core\GMap.NET.Core.csproj">
+      <Project>{d0c39d9d-bed0-418b-9a5e-713176caf40c}</Project>
+      <Name>GMap.NET.Core</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\Interfaces\Interfaces.csproj">
       <Project>{fd4d2994-9bea-41a1-8c51-2e02d1e8503e}</Project>
@@ -230,6 +233,18 @@
       <Project>{1378a66c-38e4-46f5-a05f-dc04ef7d4d16}</Project>
       <Name>MissionPlanner.Utilities</Name>
     </ProjectReference>
+    <ProjectReference Include="..\GDALForAndroid\GDALForAndroid.csproj">
+      <Project>{e1d67c23-0cdd-4835-a1e2-4634c0dd4c34}</Project>
+      <Name>GDALForAndroid</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\GDAL\GDALMPAndroid.csproj">
+      <Project>{6a3ba3a7-7d66-4292-90db-05e6a765127a}</Project>
+      <Name>GDALMPAndroid</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\gstreamerAndroid\gstreamerAndroid.csproj">
+      <Project>{e1d67c23-0cdd-4835-a1e2-4634c03d4c34}</Project>
+      <Name>gstreamerAndroid</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Xamarin\Xamarin.csproj">
       <Project>{567c5db1-9d8d-4a82-a89b-7e9357e7f6d8}</Project>
       <Name>Xamarin</Name>
@@ -239,64 +254,16 @@
     <AndroidResource Include="Resources\xml\device_filter.xml" />
   </ItemGroup>
   <ItemGroup>
-    <AndroidResource Include="..\..\..\acsimplepids.xml">
-      <Link>Resources\raw\acsimplepids.xml</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\aircraft.xml">
-      <Link>Resources\raw\aircraft.xml</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\ArduCopterConfig.xml">
-      <Link>Resources\raw\ArduCopterConfig.xml</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\camerasBuiltin.xml">
-      <Link>Resources\raw\camerasBuiltin.xml</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\ChangeLog.txt">
-      <Link>Resources\raw\ChangeLog.txt</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\checklistDefault.xml">
-      <Link>Resources\raw\checklistDefault.xml</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\dataflashlog.xml">
-      <Link>Resources\raw\dataflashlog.xml</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\FirmwareHistory.txt">
-      <Link>Resources\raw\FirmwareHistory.txt</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\mavcmd.xml">
-      <Link>Resources\raw\mavcmd.xml</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\mavextra.py">
-      <Link>Resources\raw\mavextra.py</Link>
-    </AndroidResource>
-  </ItemGroup>
-  <ItemGroup>
-    <AndroidResource Include="..\..\..\ParameterMetaDataBackup.xml">
-      <Link>Resources\raw\ParameterMetaDataBackup.xml</Link>
-      <Generator>MSBuild:UpdateGeneratedFiles</Generator>
-    </AndroidResource>
+    <AndroidResource Include="Resources\values\strings.xml" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\Xamarin\Android\Xamarin.Android.CSharp.targets" />
   <PropertyGroup>
     <PreBuildEvent>
     </PreBuildEvent>
   </PropertyGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties XamarinHotReloadDebuggerTimeoutExceptionXamarinAndroidHideInfoBar="True" TriggeredFromHotReload="False" />
+    </VisualStudio>
+  </ProjectExtensions>
 </Project>

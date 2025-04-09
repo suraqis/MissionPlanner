@@ -15,6 +15,9 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         private byte count;
 
         bool _incalibrate = false;
+        private MAVLink.ACCELCAL_VEHICLE_POS pos;
+        private int sub1;
+        private int sub2;
 
         public ConfigAccelerometerCalibration()
         {
@@ -40,7 +43,11 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                 count++;
                 try
                 {
-                    MainV2.comPort.sendPacket(new MAVLink.mavlink_command_ack_t { command = 1, result = count },
+                    // old
+                    //MainV2.comPort.sendPacket(new MAVLink.mavlink_command_ack_t { command = 1, result = count },
+                        //MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
+                    // new
+                    MainV2.comPort.sendPacket(new MAVLink.mavlink_command_long_t { param1 = (float)pos, command = (ushort)MAVLink.MAV_CMD.ACCELCAL_VEHICLE_POS },
                         MainV2.comPort.sysidcurrent, MainV2.comPort.compidcurrent);
                 }
                 catch
@@ -63,8 +70,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                 {
                     _incalibrate = true;
 
-                    MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.STATUSTEXT, receivedPacket);
-                    MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.COMMAND_LONG, receivedPacket);
+                    sub1 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.STATUSTEXT, receivedPacket, (byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent);
+                    sub2 = MainV2.comPort.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.COMMAND_LONG, receivedPacket, (byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent);
 
                     BUT_calib_accell.Text = Strings.Click_when_Done;
                 }
@@ -101,8 +108,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                         });
 
                         _incalibrate = false;
-                        MainV2.comPort.UnSubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.STATUSTEXT, receivedPacket);
-                        MainV2.comPort.UnSubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.COMMAND_LONG, receivedPacket);
+                        MainV2.comPort.UnSubscribeToPacketType(sub1);
+                        MainV2.comPort.UnSubscribeToPacketType(sub2);
                     }
                     catch
                     {
@@ -115,7 +122,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                 var message = arg.ToStructure<MAVLink.mavlink_command_long_t>();
                 if (message.command == (ushort)MAVLink.MAV_CMD.ACCELCAL_VEHICLE_POS)
                 {
-                    MAVLink.ACCELCAL_VEHICLE_POS pos = (MAVLink.ACCELCAL_VEHICLE_POS)message.param1;
+                    pos = (MAVLink.ACCELCAL_VEHICLE_POS)message.param1;
 
                     UpdateUserMessage("Please place vehicle " + pos.ToString());
                 }
@@ -152,6 +159,28 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             {
                 Log.Error("Exception on level", ex);
                 CustomMessageBox.Show("Failed to level", Strings.ERROR);
+            }
+        }
+
+        private void BUT_simpleAccelCal_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                Log.Info("Sending simple accelerometer calibration command (mavlink 1.0)");
+                if (MainV2.comPort.doCommand((byte) MainV2.comPort.sysidcurrent, (byte) MainV2.comPort.compidcurrent,
+                    MAVLink.MAV_CMD.PREFLIGHT_CALIBRATION, 0, 0, 0, 0, 4, 0, 0))
+                {
+                    BUT_simpleAccelCal.Text = Strings.Completed;
+                }
+                else
+                {
+                    CustomMessageBox.Show(Strings.CommandFailed, Strings.ERROR);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Exception on simple accelerometer calibration", ex);
+                CustomMessageBox.Show("Failed to simple accelerometer calibration", Strings.ERROR);
             }
         }
     }

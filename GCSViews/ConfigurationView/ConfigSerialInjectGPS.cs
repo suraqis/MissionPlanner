@@ -1,5 +1,4 @@
-﻿using Flurl.Util;
-using log4net;
+﻿using log4net;
 using MissionPlanner.Comms;
 using MissionPlanner.Controls;
 using MissionPlanner.Utilities;
@@ -19,7 +18,8 @@ using GMap.NET;
 using GMap.NET.WindowsForms;
 using GMap.NET.WindowsForms.Markers;
 using MissionPlanner.Maps;
-using UAVCAN;
+using DroneCAN;
+using System.Threading.Tasks;
 
 namespace MissionPlanner.GCSViews.ConfigurationView
 {
@@ -38,7 +38,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
 
         static nmea nmea = new nmea();
 
-        static uavcan can = new uavcan();
+        static DroneCAN.DroneCAN can = new DroneCAN.DroneCAN();
         // background thread 
         private static System.Threading.Thread t12;
         private static bool threadrun = false;
@@ -104,6 +104,22 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             {
                 CMB_serialport.Text = Settings.Instance["SerialInjectGPS_port"];
             }
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_AutoConfigType"))
+                comboBoxConfigType.Text = Settings.Instance["SerialInjectGPS_AutoConfigType"];
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioFixedAtitude"))
+                input_septentriofixedatitude.Text = Settings.Instance["SerialInjectGPS_SeptentrioFixedAtitude"];
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioFixedLongitude"))
+                input_septentriofixedlongitude.Text = Settings.Instance["SerialInjectGPS_SeptentrioFixedLongitude"];
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioFixedAltitude"))
+                input_septentriofixedaltitude.Text = Settings.Instance["SerialInjectGPS_SeptentrioFixedAltitude"];
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioGPS"))
+                chk_septentriogps.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_SeptentrioGPS"]);
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioGLONASS"))
+                chk_septentrioglonass.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_SeptentrioGLONASS"]);
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioGalileo"))
+                chk_septentriogalileo.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_SeptentrioGalileo"]);
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioBeiDou"))
+                chk_septentriobeidou.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_SeptentrioBeiDou"]);
             if (Settings.Instance.ContainsKey("SerialInjectGPS_baud"))
             {
                 CMB_baudrate.Text = Settings.Instance["SerialInjectGPS_baud"];
@@ -112,6 +128,12 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             {
                 CMB_baudrate.Text = "115200";
             }
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioRTCMLevel"))
+                cmb_septentriortcmamount.SelectedIndex = int.Parse(Settings.Instance["SerialInjectGPS_SeptentrioRTCMLevel"]);
+            else
+                cmb_septentriortcmamount.SelectedIndex = 1;
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioRTCMInterval"))
+                input_septentriortcminterval.Text = Settings.Instance["SerialInjectGPS_SeptentrioRTCMInterval"];
             if (Settings.Instance.ContainsKey("SerialInjectGPS_SIAcc"))
             {
                 txt_surveyinAcc.Text = Settings.Instance["SerialInjectGPS_SIAcc"];
@@ -125,8 +147,10 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             chk_rtcmmsg.Checked = rtcm_msg;
 
             // restore setting
-            if (Settings.Instance.ContainsKey("SerialInjectGPS_m8pautoconfig"))
-                chk_ubloxautoconfig.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_m8pautoconfig"]);
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_autoconfig"))
+                chk_autoconfig.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_autoconfig"]);
+            if (Settings.Instance.ContainsKey("SerialInjectGPS_SeptentrioFixedPosition"))
+                chk_septentriofixedposition.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_SeptentrioFixedPosition"]);
 
             if (Settings.Instance.ContainsKey("SerialInjectGPS_m8p_130p"))
                 chk_m8p_130p.Checked = bool.Parse(Settings.Instance["SerialInjectGPS_m8p_130p"]);
@@ -169,11 +193,13 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                    });
 
                 // we need to remove ctls for this system
-                while (ctls.Invoke(obs[0].sys).Count() > obs.Count)
+                //while (ctls.Invoke(obs[0].sys).Count() > obs.Count)
                {
-                   var list = ctls.Invoke(obs[0].sys);
-                   panel1.Controls.Remove(list.First());
+                   //var list = ctls.Invoke(obs[0].sys);
+                   //panel1.Controls.Remove(list.First());
                }
+
+               ctls.Invoke(obs[0].sys).ForEach((vp) => vp.Value = 0);
 
                int width = panel1.Width / panel1.Controls.OfType<VerticalProgressBar2>().Count();
 
@@ -272,7 +298,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             this.ShowUserControl();
         }
 
-        public void BUT_connect_Click(object sender, EventArgs e)
+        public async void BUT_connect_Click(object sender, EventArgs e)
         {
             threadrun = false;
             if (comPort.IsOpen)
@@ -293,11 +319,11 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
             else
             {
-                DoConnect();
+                await DoConnect();
             }
         }
 
-        public void DoConnect()
+        public async Task DoConnect()
         {
             status_line3 = null;
 
@@ -316,9 +342,16 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                                 ((CommsNTRIP) comPort).lng = MainV2.comPort.MAV.cs.PlannedHomeLocation.Lng;
                                 ((CommsNTRIP) comPort).alt = MainV2.comPort.MAV.cs.PlannedHomeLocation.Alt;
                             }
+                            if (check_sendntripv1.Checked)
+                            {
+                                ((CommsNTRIP)comPort).ntrip_v1 = true;
+                            } else
+                            {
+                                ((CommsNTRIP)comPort).ntrip_v1 = false;
+                            }
 
                             chk_sendgga.Enabled = false;
-                            chk_ubloxautoconfig.Checked = false;
+                            chk_autoconfig.Checked = false;
                             break;
                         case "TCP Client":
                             comPort = new TcpSerial();
@@ -419,20 +452,45 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
 
             // inject init strings - m8p
-            if (chk_ubloxautoconfig.Checked)
+            if (chk_autoconfig.Checked && comboBoxConfigType.Text == "UBlox M8P/F9P")
             {
                 this.LogInfo("Setup UBLOX");
 
-                ubx_m8p.SetupM8P(comPort, chk_m8p_130p.Checked, chk_movingbase.Checked);
+                try
+                {
+                    ubx_m8p.SetupM8P(comPort, chk_m8p_130p.Checked);
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex);
+                    CustomMessageBox.Show("Error configuring\n" +
+                                          ex.ToString());
+                    return;
+                }
+
 
                 if (basepos != PointLatLngAlt.Zero)
-                    ubx_m8p.SetupBasePos(comPort, basepos, 0, 0, false, chk_movingbase.Checked);
+                {
+                    ubx_m8p.SetupBasePos(comPort, basepos, 0, 0, true);
 
-                CMB_baudrate.Text = "115200";
+                    ubx_m8p.SetupBasePos(comPort, basepos, 0, 0, false);
+                }
+
+                CMB_baudrate.Text = "460800";
 
                 this.LogInfo("Setup UBLOX done");
+            } 
+            else if (chk_autoconfig.Checked && comboBoxConfigType.Text == "Septentrio")
+            {
+                BUT_connect.Enabled = false;
+                try
+                {
+                    await ConfigureSeptentrioReceiver();
+                } catch (Exception ex)
+                {
+                    throw ex;
+                } finally { BUT_connect.Enabled = true; }
             }
-
             t12 = new System.Threading.Thread(new System.Threading.ThreadStart(mainloop))
             {
                 IsBackground = true,
@@ -446,6 +504,40 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             bytes = 0;
             invalidateRTCMStatus();
             panel1.Controls.Clear();
+        }
+
+        /// <summary>
+        /// Automatically configure the Septentrio receiver on the current serial port as a base station, applying all the configuration set by the user.
+        /// </summary>
+        private async Task ConfigureSeptentrioReceiver()
+        {
+            this.LogInfo("Setup Septentrio");
+
+            try
+            {
+                await Utilities.Septentrio.ConfigureBaseReceiver(comPort);
+                await UpdateSeptentrioBasePosition();
+                await UpdateSeptentrioRTCMSettings();
+
+                this.LogInfo("Setup Septentrio done");
+            }
+            catch (Utilities.Septentrio.FailedAckException)
+            {
+                this.LogError("Automatic configuration of Septentrio receiver failed");
+                CustomMessageBox.Show("Automatic configuration of Septentrio receiver failed.");
+            }
+            catch (InvalidOperationException)
+            {
+                this.LogError("Septentrio fixed base position is invalid");
+                CustomMessageBox.Show("Septentrio fixed base position is invalid.");
+            }
+            catch (FormatException)
+            {
+                this.LogError("Septentrio fixed base position is invalid");
+                CustomMessageBox.Show("Septentrio fixed base position is invalid.");
+            }
+            
+            this.BeginInvokeIfRequired(new Action(() => CMB_baudrate.Text = $"{Utilities.Septentrio.DefaultBaudrate}"));
         }
 
         void invalidateRTCMStatus()
@@ -496,9 +588,9 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                     msgseen[msgname] = 0;
                 msgseen[msgname] = (int) msgseen[msgname] + 1;
 
-                if (frame.MsgTypeID == (ushort) uavcan.UAVCAN_EQUIPMENT_GNSS_RTCMSTREAM_DT_ID)
+                if (frame.MsgTypeID == (ushort)DroneCAN.DroneCAN.uavcan_equipment_gnss_RTCMStream.UAVCAN_EQUIPMENT_GNSS_RTCMSTREAM_DT_ID)
                 {
-                    var rtcm = (uavcan.uavcan_equipment_gnss_RTCMStream) msg;
+                    var rtcm = (DroneCAN.DroneCAN.uavcan_equipment_gnss_RTCMStream) msg;
 
                     for (int a = 0; a < rtcm.data_len; a++)
                     {
@@ -649,7 +741,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                                 msgseen[msgname] = (int)msgseen[msgname] + 1;
                             }
                             // can_rtcm
-                            if ((seenmsg = can.Read(buffer[a])) > 0)
+                            if ((seenmsg = can.ReadSLCAN(buffer[a])) > 0)
                             {
                                 sbp.resetParser();
                                 ubx_m8p.resetParser();
@@ -714,6 +806,9 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                        Instance.labelglonass.BackColor = Color.Green;
                        ExpireType.Set(Instance.labelglonass, 5);
                        break;
+                   case 1091:
+                   case 1092:
+                   case 1093:
                    case 1094:
                    case 1095:
                    case 1096:
@@ -771,7 +866,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                     var pvt = ubx_m8p.packet.ByteArrayToStructure<Utilities.Ubx.ubx_nav_pvt>(6);
                     if (pvt.fix_type >= 0x3 && (pvt.flags & 1) > 0)
                     {
-                        MainV2.comPort.MAV.cs.MovingBase = new Utilities.PointLatLngAlt(pvt.lat / 1e7, pvt.lon / 1e7, pvt.height / 1000.0);
+                        MainV2.comPort.MAV.cs.Base = new Utilities.PointLatLngAlt(pvt.lat / 1e7, pvt.lon / 1e7, pvt.height / 1000.0);
                     }
                     ubxpvt = pvt;
                 }
@@ -938,7 +1033,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
 
                     Utilities.rtcm3.ecef2pos(pos, ref baseposllh);
 
-                    MainV2.comPort.MAV.cs.MovingBase = new Utilities.PointLatLngAlt(baseposllh[0] * Utilities.rtcm3.R2D,
+                    MainV2.comPort.MAV.cs.Base = new Utilities.PointLatLngAlt(baseposllh[0] * Utilities.rtcm3.R2D,
                         baseposllh[1] * Utilities.rtcm3.R2D, baseposllh[2]);
 
                     status_line3 =
@@ -959,7 +1054,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
 
                     Utilities.rtcm3.ecef2pos(pos, ref baseposllh);
 
-                    MainV2.comPort.MAV.cs.MovingBase = new Utilities.PointLatLngAlt(baseposllh[0] * Utilities.rtcm3.R2D, baseposllh[1] * Utilities.rtcm3.R2D,
+                    MainV2.comPort.MAV.cs.Base = new Utilities.PointLatLngAlt(baseposllh[0] * Utilities.rtcm3.R2D, baseposllh[1] * Utilities.rtcm3.R2D,
                         baseposllh[2]);
 
                     status_line3 =
@@ -976,13 +1071,40 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
         }
 
+        /// <summary>
+        /// Returns true if everything in the list is using the same mavlink version, else false.
+        /// </summary>
+        /// <param name="ML">The list.</param>
+        /// <returns></returns>
+        private static bool GetAreAllUsingSameMavlinkVersion(Mavlink.MAVList ML)
+        {
+            return !ML.Any(M => M.mavlinkv2 != ML.First().mavlinkv2);
+        }
+
+        /// <summary>
+        /// Returns true if the gps data can just be sent once, otherwise false.
+        /// </summary>
+        /// <param name="ML">The mav list.</param>
+        /// <returns>true if can send once, otherwise false.</returns>
+        private static bool GetCanJustSendOnce(Mavlink.MAVList ML)
+        {
+            //RTCM message has no target id so only needs to be sent once.
+            return rtcm_msg && GetAreAllUsingSameMavlinkVersion(ML);
+        }
+
         private static void sendData(byte[] data, ushort length)
         {
             foreach (var port in MainV2.Comports)
             {
+                bool CanJustSendOnce = GetCanJustSendOnce(port.MAVlist);
+
                 foreach (var MAV in port.MAVlist)
                 {
                     port.InjectGpsData(MAV.sysid, MAV.compid, data, length, rtcm_msg);
+                    if (CanJustSendOnce)
+                    {
+                        break;
+                    }
                 }
             }
         }
@@ -1021,18 +1143,18 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                 myGMAP1.Overlays.Clear();
             if(myGMAP1.Overlays.Count == 0)
                 myGMAP1.Overlays.Add(new GMapOverlay("base"));
-            if (MainV2.comPort.MAV.cs.MovingBase != PointLatLng.Empty)
+            if (MainV2.comPort.MAV.cs.Base != PointLatLng.Empty)
             {
                 if (myGMAP1.Overlays[0].Markers.Count == 0)
                 {
                     myGMAP1.Overlays[0].Markers
-                        .Add(new GMarkerGoogle(MainV2.comPort.MAV.cs.MovingBase, GMarkerGoogleType.yellow_dot));
+                        .Add(new GMarkerGoogle(MainV2.comPort.MAV.cs.Base, GMarkerGoogleType.yellow_dot));
                     myGMAP1.ZoomAndCenterMarkers("base");
                 }
 
-                if (myGMAP1.Overlays[0].Markers[0].Position != MainV2.comPort.MAV.cs.MovingBase)
+                if (MainV2.comPort.MAV.cs.Base != myGMAP1.Overlays[0].Markers[0].Position)
                 {
-                    myGMAP1.Overlays[0].Markers[0].Position = MainV2.comPort.MAV.cs.MovingBase;
+                    myGMAP1.Overlays[0].Markers[0].Position = MainV2.comPort.MAV.cs.Base;
                     myGMAP1.ZoomAndCenterMarkers("base");
                 }
             }
@@ -1051,7 +1173,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         public void Activate()
         {
             myGMAP1.MapProvider = GCSViews.FlightData.mymap.MapProvider;
-            myGMAP1.MaxZoom = 22;
+            myGMAP1.MaxZoom = 24;
             myGMAP1.Zoom = 16;
             myGMAP1.DisableFocusOnMouseEnter = true;
 
@@ -1096,7 +1218,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
 
         private void but_save_basepos_Click(object sender, EventArgs e)
         {
-            if (MainV2.comPort.MAV.cs.MovingBase == null)
+            if (MainV2.comPort.MAV.cs.Base == null)
             {
                 CustomMessageBox.Show("No valid base position determined by gps yet", Strings.ERROR);
                 return;
@@ -1106,7 +1228,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             if (InputBox.Show("Enter Location", "Enter a friendly name for this location.", ref location) ==
                 DialogResult.OK)
             {
-                var basepos = MainV2.comPort.MAV.cs.MovingBase;
+                var basepos = MainV2.comPort.MAV.cs.Base;
                 Settings.Instance["base_pos"] = String.Format("{0},{1},{2},{3}", basepos.Lat.ToString(CultureInfo.InvariantCulture), basepos.Lng.ToString(CultureInfo.InvariantCulture), basepos.Alt.ToString(CultureInfo.InvariantCulture),
                     location);
 
@@ -1116,14 +1238,12 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             }
         }
 
-        private void chk_m8pautoconfig_CheckedChanged(object sender, EventArgs e)
+        private void chk_autoconfig_CheckedChanged(object sender, EventArgs e)
         {
-            Settings.Instance["SerialInjectGPS_m8pautoconfig"] = chk_ubloxautoconfig.Checked.ToString();
+            Settings.Instance["SerialInjectGPS_autoconfig"] = chk_autoconfig.Checked.ToString();
 
-            if (chk_ubloxautoconfig.Checked)
-                splitContainer1.Panel1Collapsed = false;
-            else
-                splitContainer1.Panel1Collapsed = true;
+            splitContainer1.Panel1Collapsed = !chk_autoconfig.Checked;
+            comboBoxConfigType.Visible = chk_autoconfig.Checked;
         }
 
         void updateBasePosDG()
@@ -1160,8 +1280,7 @@ namespace MissionPlanner.GCSViews.ConfigurationView
                 {
                     ubx_m8p.SetupBasePos(comPort, basepos,
                         int.Parse(txt_surveyinDur.Text, CultureInfo.InvariantCulture),
-                        double.Parse(txt_surveyinAcc.Text, CultureInfo.InvariantCulture), false,
-                        chk_movingbase.Checked);
+                        double.Parse(txt_surveyinAcc.Text, CultureInfo.InvariantCulture), false);
 
                     ubx_m8p.poll_msg(comPort, 0x06, 0x71);
                 }
@@ -1212,7 +1331,8 @@ namespace MissionPlanner.GCSViews.ConfigurationView
             if (baseposList.Count == 0)
                 return;
 
-            baseposList.RemoveAt(e.RowIndex);
+            if(e.RowIndex < baseposList.Count)
+                baseposList.RemoveAt(e.RowIndex);
 
             saveBasePosList();
         }
@@ -1241,12 +1361,22 @@ namespace MissionPlanner.GCSViews.ConfigurationView
 
             if (comPort.IsOpen)
             {
-                ubx_m8p.SetupBasePos(comPort, basepos, 0, 0, true, chk_movingbase.Checked);
+                try
+                {
+                    ubx_m8p.SetupBasePos(comPort, basepos, 0, 0, true);
 
-                ubx_m8p.SetupM8P(comPort, chk_m8p_130p.Checked, chk_movingbase.Checked);
+                    ubx_m8p.SetupM8P(comPort, chk_m8p_130p.Checked);
 
-                ubx_m8p.SetupBasePos(comPort, basepos, int.Parse(txt_surveyinDur.Text, CultureInfo.InvariantCulture),
-                    double.Parse(txt_surveyinAcc.Text, CultureInfo.InvariantCulture), false, chk_movingbase.Checked);
+                    ubx_m8p.SetupBasePos(comPort, basepos, int.Parse(txt_surveyinDur.Text, CultureInfo.InvariantCulture),
+                    double.Parse(txt_surveyinAcc.Text, CultureInfo.InvariantCulture), false);
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex);
+                    CustomMessageBox.Show("Error configuring\n" +
+                                          ex.ToString());
+                    return;
+                }
             }
         }
 
@@ -1265,6 +1395,189 @@ namespace MissionPlanner.GCSViews.ConfigurationView
         {
             if (comPort.IsOpen)
                 CustomMessageBox.Show("Please Disconnect and Reconnect to apply this change.");
+        }
+
+        private void comboBoxConfigType_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            Settings.Instance["SerialInjectGPS_AutoConfigType"] = comboBoxConfigType.Text;
+
+            groupBox_autoconfig.Controls.ForEach<Control>(c => {
+                c.Visible = false;
+            });
+
+            if (comboBoxConfigType.Text == "UBlox M8P/F9P")
+                panel_ubloxoptions.Visible = true;
+            if (comboBoxConfigType.Text == "Septentrio")
+                panel_septentrio.Visible = true;
+        }
+
+        // Use Click event because we aren't interested in code changes to the value, only user changes
+        private async void chk_septentriofixedposition_Click(object sender, EventArgs e)
+        {
+            this.BeginInvokeIfRequired(new Action(() => button_septentriosetposition.Enabled = chk_septentriofixedposition.Checked));
+
+            try
+            {
+                if (comPort.IsOpen)
+                {
+                    await UpdateSeptentrioBasePosition();
+                }
+            }
+            catch (Utilities.Septentrio.FailedAckException)
+            {
+                this.LogError("Configuration of fixed position on Septentrio receiver failed");
+                CustomMessageBox.Show("Configuration of fixed position on Septentrio receiver failed.");
+            }
+            catch (FormatException) { }
+            catch (InvalidOperationException) { }
+        }
+
+        private async void button_septentriosetposition_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                await Utilities.Septentrio.SetBasePosition(comPort, float.Parse(input_septentriofixedatitude.Text), float.Parse(input_septentriofixedlongitude.Text), float.Parse(input_septentriofixedaltitude.Text));
+                Settings.Instance["SerialInjectGPS_SeptentrioFixedAtitude"] = input_septentriofixedatitude.Text;
+                Settings.Instance["SerialInjectGPS_SeptentrioFixedLongitude"] = input_septentriofixedlongitude.Text;
+                Settings.Instance["SerialInjectGPS_SeptentrioFixedAltitude"] = input_septentriofixedaltitude.Text;
+            } catch (Utilities.Septentrio.FailedAckException)
+            {
+                this.LogError("Configuration of fixed position on Septentrio receiver failed");
+                CustomMessageBox.Show("Configuration of fixed position on Septentrio receiver failed.");
+            }
+        }
+
+        /// <summary>
+        /// Update the position setup on the attached Septentrio receiver to match the options entered by the user.
+        /// </summary>
+        /// <exception cref="Utilities.Septentrio.FailedAckException" />
+        /// <exception cref="FormatException" />
+        /// <exception cref="InvalidOperationException" />
+        private async Task UpdateSeptentrioBasePosition()
+        {
+
+            if (chk_septentriofixedposition.Checked)
+            {
+                float atitude = float.Parse(input_septentriofixedatitude.Text);
+                float longitude = float.Parse(input_septentriofixedlongitude.Text);
+                float altitude = float.Parse(input_septentriofixedaltitude.Text);
+
+                if (!(-90 <= atitude && atitude <= 90 && -180 <= longitude && longitude <= 180 && -1000 <= altitude && altitude <= 30000))
+                    throw new InvalidOperationException();
+
+                await Utilities.Septentrio.SetBasePosition(comPort, float.Parse(input_septentriofixedatitude.Text), float.Parse(input_septentriofixedlongitude.Text), float.Parse(input_septentriofixedaltitude.Text));
+            }
+            else
+            {
+                await Utilities.Septentrio.SetAutoBasePosition(comPort);
+            }
+            Settings.Instance["SerialInjectGPS_SeptentrioFixedPosition"] = chk_septentriofixedposition.Checked.ToString();
+        }
+
+        private async void cmb_septentriortcmamount_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            Settings.Instance["SerialInjectGPS_SeptentrioRTCMLevel"] = cmb_septentriortcmamount.SelectedIndex.ToString();
+
+            try
+            {
+                if (comPort.IsOpen && comboBoxConfigType.Text == "Septentrio")
+                {
+                    await UpdateSeptentrioRTCMSettings();
+                }
+            }
+            catch (Utilities.Septentrio.FailedAckException)
+            {
+                this.LogError("Configuration of fixed position on Septentrio receiver failed");
+                CustomMessageBox.Show("Configuration of fixed position on Septentrio receiver failed.");
+            }
+            catch (FormatException) { }
+            catch (InvalidOperationException) { }
+        }
+
+        /// <summary>
+        /// Update the RTCM setup on the attached Septentrio receiver to match the options entered by the user.
+        /// </summary>
+        /// <exception cref="Utilities.Septentrio.FailedAckException" />
+        /// <exception cref="FormatException" />
+        /// <exception cref="InvalidOperationException" />
+        private async Task UpdateSeptentrioRTCMSettings()
+        {
+            Utilities.Septentrio.RTCMSignals signals = Utilities.Septentrio.RTCMSignals.None;
+            Utilities.Septentrio.RTCMLevel level;
+            float rtcmInterval;
+
+            if (chk_septentriogps.Checked)
+                signals |= Utilities.Septentrio.RTCMSignals.Gps;
+            if (chk_septentrioglonass.Checked)
+                signals |= Utilities.Septentrio.RTCMSignals.Glonass;
+            if (chk_septentriogalileo.Checked)
+                signals |= Utilities.Septentrio.RTCMSignals.Galileo;
+            if (chk_septentriobeidou.Checked)
+                signals |= Utilities.Septentrio.RTCMSignals.Beidou;
+
+            switch (cmb_septentriortcmamount.Text)
+            {
+                case "Lite":
+                    level = Utilities.Septentrio.RTCMLevel.Lite;
+                    break;
+                case "Basic":
+                default:
+                    level = Utilities.Septentrio.RTCMLevel.Basic;
+                    break;
+                case "Full":
+                    level = Utilities.Septentrio.RTCMLevel.Full;
+                    break;
+            }
+
+            await Utilities.Septentrio.SetEnabledRTCM(comPort, level, signals);
+
+            Settings.Instance["SerialInjectGPS_SeptentrioGPS"] = chk_septentriogps.Checked.ToString();
+            Settings.Instance["SerialInjectGPS_SeptentrioGLONASS"] = chk_septentrioglonass.Checked.ToString();
+            Settings.Instance["SerialInjectGPS_SeptentrioGalileo"] = chk_septentriogalileo.Checked.ToString();
+            Settings.Instance["SerialInjectGPS_SeptentrioBeiDou"] = chk_septentriobeidou.Checked.ToString();
+
+            try
+            {
+                rtcmInterval = float.Parse(input_septentriortcminterval.Text);
+            } catch (FormatException)
+            {
+                throw new FormatException("The RTCM interval isn't a valid number");
+            }
+
+            if (rtcmInterval < 0.1 || rtcmInterval > 600)
+                throw new InvalidOperationException("The RTCM interval should be between 0,1 and 600");
+
+            await Utilities.Septentrio.SetRTCMInterval(comPort, rtcmInterval);
+            Settings.Instance["SerialInjectGPS_SeptentrioRTCMInterval"] = input_septentriortcminterval.Text;
+        }
+
+        private async void button_septentriortcminterval_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                await UpdateSeptentrioRTCMSettings();
+            }
+            catch (Utilities.Septentrio.FailedAckException)
+            {
+                this.LogError("Configuration of RTCM interval on Septentrio receiver failed");
+                CustomMessageBox.Show("Configuration of RTCM interval on Septentrio receiver failed.");
+            } 
+            catch (FormatException ex) {
+                log.Error(ex.Message);
+                CustomMessageBox.Show(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                this.LogError(ex.Message);
+                CustomMessageBox.Show(ex.Message);
+            }
+        }
+
+        // Use Click event because we aren't interested in code changes to the value, only user changes
+        // Unified handler for all constellation checkbox click events, as they all have the same handling logic.
+        private async void chk_septentrioconstellation_Click(object sender, EventArgs e)
+        {
+            await UpdateSeptentrioRTCMSettings();
         }
     }
 }

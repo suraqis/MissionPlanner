@@ -37,11 +37,12 @@
             // BUT_edit
             // 
             this.BUT_edit.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.BUT_edit.Location = new System.Drawing.Point(368, 3);
+            this.BUT_edit.Location = new System.Drawing.Point(231, 3);
             this.BUT_edit.Name = "BUT_edit";
             this.BUT_edit.Size = new System.Drawing.Size(34, 23);
             this.BUT_edit.TabIndex = 0;
             this.BUT_edit.Text = "Edit";
+            this.BUT_edit.TextColorNotEnabled = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(87)))), ((int)(((byte)(4)))));
             this.BUT_edit.UseVisualStyleBackColor = true;
             this.BUT_edit.Click += new System.EventHandler(this.BUT_edit_Click);
             // 
@@ -53,7 +54,7 @@
             this.panel1.AutoScroll = true;
             this.panel1.Location = new System.Drawing.Point(0, 32);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(405, 144);
+            this.panel1.Size = new System.Drawing.Size(268, 144);
             this.panel1.TabIndex = 1;
             // 
             // timer1
@@ -63,13 +64,12 @@
             // 
             // CheckListControl
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.BUT_edit);
             this.DoubleBuffered = true;
             this.Name = "CheckListControl";
-            this.Size = new System.Drawing.Size(405, 179);
+            this.Size = new System.Drawing.Size(268, 179);
+            this.Load += new System.EventHandler(this.CheckListControl_Load);
             this.ResumeLayout(false);
 
         }

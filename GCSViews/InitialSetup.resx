@@ -159,6 +159,9 @@
   <data name="backstageViewPageaccel.Text" xml:space="preserve">
     <value>Accel Calibration</value>
   </data>
+  <data name="backstageViewPageInitialParams.Text" xml:space="preserve">
+    <value>Initial Tune Parameter</value>
+  </data>
   <data name="backstageViewPageaccel.Visible" type="System.Boolean, mscorlib">
     <value>False</value>
   </data>
@@ -944,5 +947,8 @@
   </data>
   <data name="&gt;&gt;$this.Type" xml:space="preserve">
     <value>System.Windows.Forms.MyUserControl, MissionPlanner.Controls, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="backstageViewPageSerial.Text" xml:space="preserve">
+    <value>Serial Ports</value>
   </data>
 </root>

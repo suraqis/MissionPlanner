@@ -41,6 +41,10 @@ namespace Xamarin
                         System.Diagnostics.Process.GetCurrentProcess().CloseMainWindow();
                         //System.Environment.Exit(0);
                     }
+                    else
+                    {
+                        System.Diagnostics.Process.GetCurrentProcess().CloseMainWindow();
+                    }
                 }
             });
 
@@ -56,15 +60,20 @@ namespace Xamarin
             MasterBehavior = MasterBehavior.Popover;
             IsPresented = false;
 
-            DeviceDisplay.KeepScreenOn = true;
+            try
+            {
+                // fails on OSX
+                DeviceDisplay.KeepScreenOn = true;
+            }
+            catch
+            {
+
+            }
 
             try
             {
-             
-
                 MasterPage.ListView.ItemSelected += ListView_ItemSelected;
 
-                AppDomain.CurrentDomain.UnhandledException += CurrentDomainOnUnhandledException;
                 TaskScheduler.UnobservedTaskException += TaskSchedulerOnUnobservedTaskException;
             } catch
             {

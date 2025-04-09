@@ -128,6 +128,9 @@
   <data name="CMB_serialport.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
   </data>
+  <data name="CMB_serialport.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
   <data name="&gt;&gt;CMB_serialport.Name" xml:space="preserve">
     <value>CMB_serialport</value>
   </data>
@@ -138,19 +141,26 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;CMB_serialport.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>4</value>
+  </data>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="BUT_connect.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="BUT_connect.Location" type="System.Drawing.Point, System.Drawing">
     <value>140, 13</value>
   </data>
   <data name="BUT_connect.Size" type="System.Drawing.Size, System.Drawing">
-    <value>75, 23</value>
+    <value>88, 23</value>
   </data>
   <data name="BUT_connect.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
   </data>
   <data name="BUT_connect.Text" xml:space="preserve">
     <value>Connect</value>
+  </data>
+  <data name="BUT_connect.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
   </data>
   <data name="&gt;&gt;BUT_connect.Name" xml:space="preserve">
     <value>BUT_connect</value>
@@ -162,7 +172,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;BUT_connect.ZOrder" xml:space="preserve">
-    <value>2</value>
+    <value>3</value>
   </data>
   <data name="CMB_baudrate.Items" xml:space="preserve">
     <value>4800</value>
@@ -197,6 +207,9 @@
   <data name="CMB_baudrate.TabIndex" type="System.Int32, mscorlib">
     <value>2</value>
   </data>
+  <data name="CMB_baudrate.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
   <data name="&gt;&gt;CMB_baudrate.Name" xml:space="preserve">
     <value>CMB_baudrate</value>
   </data>
@@ -207,10 +220,13 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;CMB_baudrate.ZOrder" xml:space="preserve">
-    <value>1</value>
+    <value>2</value>
   </data>
   <data name="chk_write.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <data name="chk_write.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="chk_write.Location" type="System.Drawing.Point, System.Drawing">
     <value>140, 46</value>
@@ -224,6 +240,9 @@
   <data name="chk_write.Text" xml:space="preserve">
     <value>Write access</value>
   </data>
+  <data name="chk_write.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
   <data name="&gt;&gt;chk_write.Name" xml:space="preserve">
     <value>chk_write</value>
   </data>
@@ -234,16 +253,91 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;chk_write.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="myDataGridView1.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
+    <value>Top, Bottom, Left, Right</value>
+  </data>
+  <metadata name="Type.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="Type.HeaderText" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Type.Width" type="System.Int32, mscorlib">
+    <value>55</value>
+  </data>
+  <metadata name="Direction.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="Direction.HeaderText" xml:space="preserve">
+    <value>Direction</value>
+  </data>
+  <data name="Direction.Width" type="System.Int32, mscorlib">
+    <value>80</value>
+  </data>
+  <metadata name="Port.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="Port.HeaderText" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="Port.Width" type="System.Int32, mscorlib">
+    <value>60</value>
+  </data>
+  <metadata name="Extra.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="Extra.HeaderText" xml:space="preserve">
+    <value>Host/Baud</value>
+  </data>
+  <data name="Extra.Width" type="System.Int32, mscorlib">
+    <value>80</value>
+  </data>
+  <metadata name="Write.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="Write.HeaderText" xml:space="preserve">
+    <value>Write</value>
+  </data>
+  <data name="Write.Width" type="System.Int32, mscorlib">
+    <value>40</value>
+  </data>
+  <metadata name="Go.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <data name="Go.HeaderText" xml:space="preserve">
+    <value>Go</value>
+  </data>
+  <data name="Go.Width" type="System.Int32, mscorlib">
+    <value>40</value>
+  </data>
+  <data name="myDataGridView1.Location" type="System.Drawing.Point, System.Drawing">
+    <value>12, 69</value>
+  </data>
+  <data name="myDataGridView1.Size" type="System.Drawing.Size, System.Drawing">
+    <value>428, 150</value>
+  </data>
+  <data name="myDataGridView1.TabIndex" type="System.Int32, mscorlib">
+    <value>4</value>
+  </data>
+  <data name="&gt;&gt;myDataGridView1.Name" xml:space="preserve">
+    <value>myDataGridView1</value>
+  </data>
+  <data name="&gt;&gt;myDataGridView1.Type" xml:space="preserve">
+    <value>MissionPlanner.Controls.MyDataGridView, MissionPlanner, Version=1.3.9076.24256, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="&gt;&gt;myDataGridView1.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;myDataGridView1.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
   <metadata name="$this.Localizable" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
   </metadata>
-  <data name="$this.AutoScaleDimensions" type="System.Drawing.SizeF, System.Drawing">
-    <value>6, 13</value>
-  </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>228, 75</value>
+    <value>452, 228</value>
   </data>
   <data name="$this.Icon" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
     <value>
@@ -323,6 +417,42 @@
   </data>
   <data name="$this.Text" xml:space="preserve">
     <value>SerialOutput - Mavlink</value>
+  </data>
+  <data name="&gt;&gt;Type.Name" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="&gt;&gt;Type.Type" xml:space="preserve">
+    <value>System.Windows.Forms.DataGridViewComboBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;Direction.Name" xml:space="preserve">
+    <value>Direction</value>
+  </data>
+  <data name="&gt;&gt;Direction.Type" xml:space="preserve">
+    <value>System.Windows.Forms.DataGridViewComboBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;Port.Name" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="&gt;&gt;Port.Type" xml:space="preserve">
+    <value>System.Windows.Forms.DataGridViewTextBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;Extra.Name" xml:space="preserve">
+    <value>Extra</value>
+  </data>
+  <data name="&gt;&gt;Extra.Type" xml:space="preserve">
+    <value>System.Windows.Forms.DataGridViewTextBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;Write.Name" xml:space="preserve">
+    <value>Write</value>
+  </data>
+  <data name="&gt;&gt;Write.Type" xml:space="preserve">
+    <value>System.Windows.Forms.DataGridViewCheckBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;Go.Name" xml:space="preserve">
+    <value>Go</value>
+  </data>
+  <data name="&gt;&gt;Go.Type" xml:space="preserve">
+    <value>System.Windows.Forms.DataGridViewButtonColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">
     <value>SerialOutputPass</value>

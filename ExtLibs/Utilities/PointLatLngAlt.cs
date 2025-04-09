@@ -11,6 +11,7 @@ using ProjNet.CoordinateSystems.Transformations;
 using GeoUtility;
 using GeoUtility.GeoSystem;
 using System.Collections;
+using GeoAPI.Geometries;
 
 namespace MissionPlanner.Utilities
 {
@@ -20,6 +21,9 @@ namespace MissionPlanner.Utilities
         public static readonly PointLatLngAlt Zero = new PointLatLngAlt();
         public double Lat { get; set; } = 0;
         public double Lng { get; set; } = 0;
+        /// <summary>
+        /// Altitude in meters
+        /// </summary>
         public double Alt { get; set; } = 0;
         public string Tag { get; set; } = "";
         public string Tag2 { get; set; } = "";
@@ -137,6 +141,23 @@ namespace MissionPlanner.Utilities
             return false;
         }
 
+
+        public static bool operator ==(PointLatLngAlt p1, PointLatLngAlt p2)
+        {
+            if (p1 is null && p2 is null)
+                return true;
+
+            if (p1 is null && !(p2 is null))
+                return false;
+
+            return p1.Equals(p2);
+        }
+
+        public static bool operator !=(PointLatLngAlt p1, PointLatLngAlt p2)
+        {
+            return !(p1 == p2);
+        }
+
         public static bool operator ==(PointLatLngAlt p1, PointLatLng p2)
         {
             if (p1 == null || p2 == null)
@@ -176,6 +197,28 @@ namespace MissionPlanner.Utilities
             return zone;
         }
 
+        public int GetLngStartFromZone()
+        {
+            int zone = GetUTMZone();
+            return ((Math.Abs(zone) * 6) - 180) - 6;
+        }
+
+        public int GetLngEndFromZone()
+        {
+            int zone = GetUTMZone();
+            return ((Math.Abs(zone) * 6) - 180);
+        }
+
+        public int GetLatStartUTM()
+        {
+            return (int) (Lat - (Lat % 8));
+        }
+
+        public int GetLatEndUTM()
+        {
+            return (int)(Lat - (Lat % 8)) - 8;
+        }
+
         public string GetFriendlyZone()
         {
             return GetUTMZone().ToString("0N;0S");
@@ -188,6 +231,16 @@ namespace MissionPlanner.Utilities
             MGRS mgrs = (MGRS)geo;
 
             return mgrs.ToString();
+        }
+
+        public static Coordinate[] Transform(Coordinate[] points, string sourceCoordinateSystemString, string targetCoordinateSystemString = "GEOGCS[\"GCS_WGS_1984\",DATUM[\"D_WGS_1984\",SPHEROID[\"WGS_1984\",6378137,298.257223563]],PRIMEM[\"Greenwich\",0],UNIT[\"Degree\",0.0174532925199433]]")
+        {
+            CoordinateSystemFactory coordinateSystemFactory = new CoordinateSystemFactory();
+            ICoordinateSystem sourceCoordinateSystem = coordinateSystemFactory.CreateFromWkt(sourceCoordinateSystemString);
+            ICoordinateSystem targetCoordinateSystem = coordinateSystemFactory.CreateFromWkt(targetCoordinateSystemString);
+            ICoordinateTransformation trans = (new CoordinateTransformationFactory()).CreateFromCoordinateSystems(sourceCoordinateSystem, targetCoordinateSystem);
+
+            return trans.MathTransform.TransformList(points).ToArray();
         }
 
         public static PointLatLngAlt FromUTM(int zone,double x, double y)
@@ -247,6 +300,13 @@ namespace MissionPlanner.Utilities
             list.ForEach(x => { data.Add((double[])x); });
 
             return trans.MathTransform.TransformList(data).ToList();
+        }
+
+        public static double[] ToUTM(int utmzone, double lat, double lng)
+        {
+            ICoordinateTransformation trans = TryGetTransform(utmzone, lat);
+
+            return trans.MathTransform.Transform(new double[] { lng, lat});
         }
 
 
@@ -347,6 +407,35 @@ namespace MissionPlanner.Utilities
             var d = R * c * 1000.0; // M
 
             return d;
+        }
+
+
+        /// <summary>
+        /// https://www.movable-type.co.uk/scripts/latlong.html
+        /// </summary>
+        /// <param name="p2"></param>
+        /// <param name="f">0-1</param>
+        /// <returns></returns>
+        public PointLatLngAlt GetGreatCirclePathPoint(PointLatLngAlt p2, double f)
+        {
+            var dLat = (p2.Lat - Lat) * MathHelper.deg2rad;
+            var dLon = (p2.Lng - Lng) * MathHelper.deg2rad;
+            var R = 6378100.0; // 6371 km
+            var angdist = this.GetDistance(p2) / R;
+
+            //φ = lat
+            //δ = d/R
+            //λ2 = lon
+
+            var a = Math.Sin((1-f) * angdist) / Math.Sin(angdist);
+            var b = Math.Sin(f * angdist) / Math.Sin(angdist);
+            var x = a * Math.Cos(Lat * MathHelper.deg2rad) * Math.Cos(Lng * MathHelper.deg2rad) + b * Math.Cos(p2.Lat * MathHelper.deg2rad) * Math.Cos(p2.Lng * MathHelper.deg2rad);
+            var y = a * Math.Cos(Lat * MathHelper.deg2rad) * Math.Sin(Lng * MathHelper.deg2rad) + b * Math.Cos(p2.Lat * MathHelper.deg2rad) * Math.Sin(p2.Lng * MathHelper.deg2rad);
+            var z = a * Math.Sin(Lat * MathHelper.deg2rad) + b * Math.Sin(p2.Lat * MathHelper.deg2rad);
+            var alat = Math.Atan2(z, Math.Sqrt(x * x + y * y));
+            var alon = Math.Atan2(y, x);
+
+            return new PointLatLngAlt(alat * MathHelper.rad2deg, alon * MathHelper.rad2deg);
         }
 
         public int CompareTo(object obj)

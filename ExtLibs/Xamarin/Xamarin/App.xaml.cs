@@ -20,12 +20,11 @@ using Xamarin.Forms.Internals;
 using Xamarin.Forms.Xaml;
 using Device = Xamarin.Forms.Device;
 using LogManager = log4net.LogManager;
-
+using log4net.Util;
 
 [assembly: XamlCompilation(XamlCompilationOptions.Compile)]
 namespace Xamarin
 {
-
     public partial class App : Application
     {
         private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -36,13 +35,12 @@ namespace Xamarin
         {
             InitializeComponent();
 
-            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
-
             log4net.Repository.Hierarchy.Hierarchy hierarchy =
                 (Hierarchy)log4net.LogManager.GetRepository(Assembly.GetAssembly(typeof(App)));
 
-            PatternLayout patternLayout = new PatternLayout();
-            patternLayout.ConversionPattern = "[%thread] %-5level %logger - %message";
+            var patternLayout = new PatternLayout();
+            patternLayout.ConversionPattern = "[%thread] %-5level %logger %memory - %message\r\n";
+            patternLayout.AddConverter(new ConverterInfo() {Name = "memory", Type = typeof(MemoryConverterInfo)});
             patternLayout.ActivateOptions();
 
             var cca = new ConsoleAppender();
@@ -76,8 +74,15 @@ namespace Xamarin
 
         protected override void OnStart()
         {
-            // Handle when your app starts
+            MainV2.isHerelink = Test.SystemInfo?.GetSystemTag().Contains("CubePilot") ?? false;
+            if (MainV2.isHerelink) {
+                var video = AutoConnect.connectionInfos.Find(a => a.Label.Equals("HereLink GCS"));
+                if (video != null)
+                    video.Enabled = true;
+            }
 
+            // Handle when your app starts
+            /*
             Task.Run(async () =>
             {
                 try
@@ -103,12 +108,7 @@ namespace Xamarin
                     Log.Warning("", ex.ToString());
                 }
             });
-
-            //CustomMessageBox.ShowEvent += CustomMessageBox_ShowEvent;
-            //MAVLinkInterface.CreateIProgressReporterDialogue += CreateIProgressReporterDialogue;
-
-            //Task.Run(() => { MainV2.instance.SerialReader(); });
-
+            */
         }
 
         private CustomMessageBox.DialogResult CustomMessageBox_ShowEvent(string text, string caption = "",
@@ -181,13 +181,19 @@ namespace Xamarin
                 mav.Open(false, true);
 
                 mav.getParamList();
-                //mav.getParamListAsync(mav.MAV.sysid, mav.MAV.compid).ConfigureAwait(false);
-
             }
             catch (Exception ex)
             {
                 Log.Warning("", ex.ToString());
             }
+        }
+    }
+
+    public class MemoryConverterInfo : PatternConverter
+    {
+        protected override void Convert(TextWriter writer, object state)
+        {
+            writer.Write((GC.GetTotalMemory(false) / 1024 / 1024).ToString("0") + "MB");
         }
     }
 }

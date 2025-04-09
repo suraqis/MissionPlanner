@@ -9,17 +9,49 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using Org.BouncyCastle.Crypto.Digests;
 
 namespace MissionPlanner
 {
     public static class CodeGenRoslyn
     {
+        public static string lasterror = "";
+
+        public static string CachePath = Settings.GetDataDirectory() + "plugins" + Path.DirectorySeparatorChar;
+
         public static Assembly BuildCode(string filepath)
         {
+            try
+            {
+                Directory.CreateDirectory(CachePath);
+            }
+            catch
+            {
+            }
+
+            var md5hash = "";
+            lasterror = "";
+            var filecontents = File.ReadAllText(filepath, Encoding.UTF8);
+            {
+                var bytes = filecontents.Select(a => (byte) a).ToArray();
+                var md5 = new MD5Digest();
+                md5.BlockUpdate(bytes, 0, bytes.Length);
+                var result = new byte[md5.GetDigestSize()];
+                md5.DoFinal(result, 0);
+                md5hash = BitConverter.ToString(result).Replace("-", "").ToLower();
+
+                if (File.Exists(Path.Combine(CachePath, md5hash + ".dll")) && File.Exists(Path.Combine(CachePath, md5hash + ".pdb")))
+                {
+                    // load the cached version
+                    return Assembly.Load(File.ReadAllBytes(Path.Combine(CachePath, md5hash + ".dll")),
+                        File.ReadAllBytes(Path.Combine(CachePath, md5hash + ".pdb")));
+                }
+            }
             var syntaxTree =
-                CSharpSyntaxTree.ParseText(File.ReadAllText(filepath, Encoding.UTF8), path: filepath,
+                CSharpSyntaxTree.ParseText(filecontents, path: filepath,
                     encoding: Encoding.UTF8);
             var assemblyName = Path.GetFileNameWithoutExtension(filepath); //Guid.NewGuid().ToString();
 
@@ -27,11 +59,13 @@ namespace MissionPlanner
             var refFiles = refs.Where(a =>
                     !a.IsDynamic && !a.FullName.Contains("MissionPlanner.Drawing"))
                 .Select(a => a.Location);
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                refFiles = refs.Where(a => !a.IsDynamic).Select(a => a.Location);
             var refmeta = refFiles.Select(a =>
             {
                 try
                 {
-                    if (a == "")
+                    if (a == "" || !File.Exists(a))
                         return null;
                     return AssemblyMetadata.CreateFromFile(a).GetReference();
                 }
@@ -53,11 +87,21 @@ namespace MissionPlanner
                 if (!emitResult.Success)
                 {
                     // emitResult.Diagnostics
-                    emitResult.Diagnostics.ForEach(a => Console.WriteLine("{0}", a.ToString()));
+                    emitResult.Diagnostics.ForEach(a => Console.WriteLine("CodeGenRoslyn " + Path.GetFileName(filepath) + ": {0}", a.ToString()));
+                    lasterror = emitResult.Diagnostics.Aggregate("", (a, b) => a + b.ToString()+"\n");
                 }
                 else
                 {
-                    return Assembly.Load(dllStream.GetBuffer(), pdbStream.GetBuffer());
+                    try
+                    {
+                        File.WriteAllBytes(Path.Combine(CachePath, md5hash + ".dll"), dllStream.ToArray());
+                        File.WriteAllBytes(Path.Combine(CachePath, md5hash + ".pdb"), pdbStream.ToArray());
+                    }
+                    catch
+                    {
+                    }
+
+                    return Assembly.Load(dllStream.ToArray(), pdbStream.ToArray());
                 }
 
                 return null;
@@ -67,8 +111,10 @@ namespace MissionPlanner
 
     public static class CodeGen
     {
+        public static string lasterror = "";
         public static object runCode(string code)
         {
+            lasterror = "";
             object answer = null;
 
             GetMathMemberNames();
@@ -118,6 +164,9 @@ namespace MissionPlanner
             var refFiles = refs.Where(a => !a.IsDynamic && !a.FullName.Contains("mscorlib") && !a.FullName.Contains("MissionPlanner.Drawing"))
                 .Select(a => a.Location);
 
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                refFiles = refs.Where(a => !a.IsDynamic && !a.FullName.Contains("mscorlib")).Select(a => a.Location);
+
             //add compiler parameters and assembly references
             CompilerParameters compilerParams = new CompilerParameters(refFiles.ToArray());
             compilerParams.CompilerOptions = "/target:library /langversion:5";
@@ -149,7 +198,10 @@ namespace MissionPlanner
             if (results.Errors.Count > 0)
             {
                 foreach (CompilerError error in results.Errors)
-                    Console.WriteLine("Compile Error: Line: " + error.Line + ":" + error.Column + " " + error.ErrorText);
+                    Console.WriteLine("CodeGen: Compile Error: Line: " + error.Line + ":" + error.Column + " " + error.ErrorText);
+
+                lasterror = results.Errors.Flatten<CompilerError>().Aggregate("",
+                    (a, error) => { return a + error.Line + ":" + error.Column + " " + error.ErrorText + "\n"; });
                 return null;
             }
 
@@ -171,9 +223,14 @@ namespace MissionPlanner
                 bool iserror = false;
                 foreach (CompilerError error in results.Errors)
                 {
-                    Console.WriteLine("Compile " + (error.IsWarning ? "Warning" : "Error") + ": Line: " + error.Line +
+                    Console.WriteLine("CodeGen Compile " + Path.GetFileName(filename) + ": " + (error.IsWarning ? "Warning" : "Error") + ": Line: " + error.Line +
                                       ":" + error.Column + " " +
                                       error.ErrorText);
+
+                    lasterror = results.Errors.Flatten<CompilerError>().Aggregate("",
+                        (a, error2) => { return a + (error2.IsWarning ? "Warning" : "Error") + ": Line: " + error2.Line +
+                                               ":" + error2.Column + " " +
+                                               error2.ErrorText + "\n"; });
                     if (!error.IsWarning)
                         iserror = true;
                 }

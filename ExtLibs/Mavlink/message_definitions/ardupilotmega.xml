@@ -4,8 +4,11 @@
   <!-- Vendors -->
   <include>uAvionix.xml</include>
   <include>icarous.xml</include>
+  <include>loweheiser.xml</include>
+  <include>cubepilot.xml</include>
+  <include>csAirLink.xml</include>
   <dialect>2</dialect>
-  <!-- Note that APM specific messages should use the command id range from 150 to 250, to leave plenty of room for growth of common.xml If you prototype a message here, then you should consider if it is general enough to move into common.xml later -->
+  <!-- Note that ArduPilot-specific messages should use the command id range from 150 to 250, to leave plenty of room for growth of common.xml If you prototype a message here, then you should consider if it is general enough to move into common.xml later -->
   <enums>
     <enum name="ACCELCAL_VEHICLE_POS">
       <entry value="1" name="ACCELCAL_VEHICLE_POS_LEVEL"/>
@@ -20,37 +23,45 @@
     <enum name="HEADING_TYPE">
       <entry value="0" name="HEADING_TYPE_COURSE_OVER_GROUND"/>
       <entry value="1" name="HEADING_TYPE_HEADING"/>
-    </enum>
-    <enum name="SPEED_TYPE">
-      <entry value="0" name="SPEED_TYPE_AIRSPEED"/>
-      <entry value="1" name="SPEED_TYPE_GROUNDSPEED"/>
+      <entry value="2" name="HEADING_TYPE_DEFAULT"/>
     </enum>
     <!-- ardupilot specific MAV_CMD_* commands -->
     <enum name="MAV_CMD">
-      <entry value="211" name="MAV_CMD_DO_GRIPPER" hasLocation="false" isDestination="false">
-        <description>Mission command to operate EPM gripper.</description>
-        <param index="1" label="Instance" minValue="1" increment="1">Gripper instance number (from 1 to max number of grippers on the vehicle).</param>
-        <param index="2" label="Action" enum="GRIPPER_ACTIONS">Gripper action.</param>
-        <param index="3">Empty.</param>
-        <param index="4">Empty.</param>
-        <param index="5">Empty.</param>
-        <param index="6">Empty.</param>
-        <param index="7">Empty.</param>
-      </entry>
-      <entry value="212" name="MAV_CMD_DO_AUTOTUNE_ENABLE" hasLocation="false" isDestination="false">
-        <description>Enable/disable autotune.</description>
-        <param index="1" label="Enable" minValue="0" maxValue="1" increment="1">Enable (1: enable, 0:disable).</param>
-        <param index="2">Empty.</param>
-        <param index="3">Empty.</param>
-        <param index="4">Empty.</param>
-        <param index="5">Empty.</param>
-        <param index="6">Empty.</param>
-        <param index="7">Empty.</param>
-      </entry>
-      <entry value="215" name="MAV_CMD_DO_SET_RESUME_REPEAT_DIST">
+      <!-- 200 to 214 used by common.xml -->
+      <entry value="215" name="MAV_CMD_DO_SET_RESUME_REPEAT_DIST" hasLocation="false" isDestination="false">
         <description>Set the distance to be repeated on mission resume</description>
         <param index="1" label="Distance" units="m">Distance.</param>
         <param index="2">Empty.</param>
+        <param index="3">Empty.</param>
+        <param index="4">Empty.</param>
+        <param index="5">Empty.</param>
+        <param index="6">Empty.</param>
+        <param index="7">Empty.</param>
+      </entry>
+      <entry value="216" name="MAV_CMD_DO_SPRAYER" hasLocation="false" isDestination="false">
+        <description>Control attached liquid sprayer</description>
+        <param index="1" label="Sprayer Enable" minValue="0" maxValue="1" increment="1">0: disable sprayer. 1: enable sprayer.</param>
+        <param index="2">Empty.</param>
+        <param index="3">Empty.</param>
+        <param index="4">Empty.</param>
+        <param index="5">Empty.</param>
+        <param index="6">Empty.</param>
+        <param index="7">Empty.</param>
+      </entry>
+      <entry value="217" name="MAV_CMD_DO_SEND_SCRIPT_MESSAGE" hasLocation="false" isDestination="false">
+        <description>Pass instructions onto scripting, a script should be checking for a new command</description>
+        <param index="1" label="ID" minValue="0" maxValue="65535" increment="1">uint16 ID value to be passed to scripting</param>
+        <param index="2" label="param 1">float value to be passed to scripting</param>
+        <param index="3" label="param 2">float value to be passed to scripting</param>
+        <param index="4" label="param 3">float value to be passed to scripting</param>
+        <param index="5">Empty.</param>
+        <param index="6">Empty.</param>
+        <param index="7">Empty.</param>
+      </entry>
+      <entry value="218" name="MAV_CMD_DO_AUX_FUNCTION">
+        <description>Execute auxiliary function</description>
+        <param index="1" label="AuxiliaryFunction">Auxiliary Function.</param>
+        <param index="2" label="SwitchPosition" enum="MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL">Switch Level.</param>
         <param index="3">Empty.</param>
         <param index="4">Empty.</param>
         <param index="5">Empty.</param>
@@ -129,12 +140,13 @@
         <param index="6">Empty.</param>
         <param index="7">Empty.</param>
       </entry>
-      <entry value="42006" name="MAV_CMD_FIXED_MAG_CAL_YAW">
-        <description>Magnetometer calibration based on provided known yaw. This allows for fast calibration using WMM field tables in the vehicle, given only the known yaw of the vehicle. If Latitude and longitude are both zero then use the current vehicle location.</description>
-        <param index="1" label="Yaw" units="deg">Yaw of vehicle in earth frame.</param>
-        <param index="2" label="CompassMask">CompassMask, 0 for all.</param>
-        <param index="3" label="Latitude" units="deg">Latitude.</param>
-        <param index="4" label="Longitude" units="deg">Longitude.</param>
+      <!-- 42006 MAV_CMD_FIXED_MAG_CAL_YAW moved to common.xml -->
+      <entry value="42007" name="MAV_CMD_SET_EKF_SOURCE_SET" hasLocation="false" isDestination="false">
+        <description>Set EKF sensor source set.</description>
+        <param index="1" label="SourceSetId" minValue="1" maxValue="3" increment="1">Source Set Id.</param>
+        <param index="2">Empty.</param>
+        <param index="3">Empty.</param>
+        <param index="4">Empty.</param>
         <param index="5">Empty.</param>
         <param index="6">Empty.</param>
         <param index="7">Empty.</param>
@@ -212,7 +224,7 @@
       <entry value="42502" name="MAV_CMD_GIMBAL_AXIS_CALIBRATION_STATUS" hasLocation="false" isDestination="false">
         <description>Reports progress and success or failure of gimbal axis calibration procedure.</description>
         <param index="1" label="Axis" enum="GIMBAL_AXIS">Gimbal axis we're reporting calibration progress for.</param>
-        <param index="2" label="Progress" units="%" minValue="0" maxValue="100" >Current calibration progress for this axis.</param>
+        <param index="2" label="Progress" units="%" minValue="0" maxValue="100">Current calibration progress for this axis.</param>
         <param index="3" label="Status" enum="GIMBAL_AXIS_CALIBRATION_STATUS">Status of the calibration.</param>
         <param index="4">Empty.</param>
         <param index="5">Empty.</param>
@@ -239,16 +251,7 @@
         <param index="6">Magic number.</param>
         <param index="7">Magic number.</param>
       </entry>
-      <entry value="42600" name="MAV_CMD_DO_WINCH" hasLocation="false" isDestination="false">
-        <description>Command to operate winch.</description>
-        <param index="1" label="Instance" minValue="0" increment="1">Winch instance number (0 for the default winch, otherwise a number from 1 to max number of winches on the vehicle).</param>
-        <param index="2" label="Action" enum="WINCH_ACTIONS">Action.</param>
-        <param index="3" label="Length" units="m">Release length (cable distance to unwind, negative numbers to wind in cable).</param>
-        <param index="4" label="Rate" units="m/s">Release rate.</param>
-        <param index="5">Empty.</param>
-        <param index="6">Empty.</param>
-        <param index="7">Empty.</param>
-      </entry>
+      <!-- 42600 used by common.xml -->
       <entry value="42650" name="MAV_CMD_FLASH_BOOTLOADER" hasLocation="false" isDestination="false">
         <description>Update the bootloader</description>
         <param index="1">Empty</param>
@@ -264,7 +267,7 @@
         <param index="1" label="battery mask">Bitmask of batteries to reset. Least significant bit is for the first battery.</param>
         <param index="2" label="percentage" minValue="0" maxValue="100" increment="1">Battery percentage remaining to set.</param>
       </entry>
-      <entry value="42700" name="MAV_CMD_DEBUG_TRAP">
+      <entry value="42700" name="MAV_CMD_DEBUG_TRAP" hasLocation="false" isDestination="false">
         <description>Issue a trap signal to the autopilot process, presumably to enter the debugger.</description>
         <param index="1">Magic number - set to 32451 to actually trap.</param>
         <param index="2">Empty.</param>
@@ -274,11 +277,31 @@
         <param index="6">Empty.</param>
         <param index="7">Empty.</param>
       </entry>
-      <entry value="42701" name="MAV_CMD_SCRIPTING">
+      <entry value="42701" name="MAV_CMD_SCRIPTING" hasLocation="false" isDestination="false">
         <description>Control onboard scripting.</description>
         <param index="1" enum="SCRIPTING_CMD">Scripting command to execute</param>
       </entry>
-      <entry value="43000" name="MAV_CMD_GUIDED_CHANGE_SPEED">
+      <entry value="42702" name="MAV_CMD_NAV_SCRIPT_TIME" hasLocation="false" isDestination="false">
+        <description>Scripting command as NAV command with wait for completion.</description>
+        <param index="1" label="command">integer command number (0 to 255)</param>
+        <param index="2" label="timeout" units="s">timeout for operation in seconds. Zero means no timeout (0 to 255)</param>
+        <param index="3" label="arg1">argument1.</param>
+        <param index="4" label="arg2">argument2.</param>
+        <param index="5" label="arg3">argument3.</param>
+        <param index="6" label="arg4">argument4.</param>
+        <param index="7">Empty</param>
+      </entry>
+      <entry value="42703" name="MAV_CMD_NAV_ATTITUDE_TIME" hasLocation="false" isDestination="false">
+        <description>Maintain an attitude for a specified time.</description>
+        <param index="1" label="time" units="s">Time to maintain specified attitude and climb rate</param>
+        <param index="2" label="roll" units="deg">Roll angle in degrees (positive is lean right, negative is lean left)</param>
+        <param index="3" label="pitch" units="deg">Pitch angle in degrees (positive is lean back, negative is lean forward)</param>
+        <param index="4" label="yaw" units="deg">Yaw angle</param>
+        <param index="5" label="climb_rate" units="m/s">Climb rate</param>
+        <param index="6">Empty</param>
+        <param index="7">Empty</param>
+      </entry>
+      <entry value="43000" name="MAV_CMD_GUIDED_CHANGE_SPEED" hasLocation="false" isDestination="false">
         <description>Change flight speed at a given rate. This slews the vehicle at a controllable rate between it's previous speed and the new one. (affects GUIDED only. Outside GUIDED, aircraft ignores these commands. Designed for onboard companion-computer command-and-control, not normally operator/GCS control.)</description>
         <param index="1" label="speed type" enum="SPEED_TYPE">Airspeed or groundspeed.</param>
         <param index="2" label="speed target" units="m/s">Target Speed</param>
@@ -288,21 +311,41 @@
         <param index="6">Empty</param>
         <param index="7">Empty</param>
       </entry>
-      <entry value="43001" name="MAV_CMD_GUIDED_CHANGE_ALTITUDE">
+      <entry value="43001" name="MAV_CMD_GUIDED_CHANGE_ALTITUDE" hasLocation="false" isDestination="false">
         <description>Change target altitude at a given rate. This slews the vehicle at a controllable rate between it's previous altitude and the new one. (affects GUIDED only. Outside GUIDED, aircraft ignores these commands. Designed for onboard companion-computer command-and-control, not normally operator/GCS control.)</description>
         <param index="1">Empty</param>
         <param index="2">Empty</param>
-        <param index="3" label="alt rate-of-change" units="m/s/s" minValue="0">Rate of change, toward new altitude. 0 for maximum rate change. Positive numbers only, as negative numbers will not converge on the new target alt.</param>
+        <param index="3" label="alt rate-of-change" units="m/s" minValue="0">Rate of change, toward new altitude. 0 for maximum rate change. Positive numbers only, as negative numbers will not converge on the new target alt.</param>
         <param index="4">Empty</param>
         <param index="5">Empty</param>
         <param index="6">Empty</param>
         <param index="7" label="target alt" units="m">Target Altitude</param>
       </entry>
-      <entry value="43002" name="MAV_CMD_GUIDED_CHANGE_HEADING">
+      <entry value="43002" name="MAV_CMD_GUIDED_CHANGE_HEADING" hasLocation="false" isDestination="false">
         <description>Change to target heading at a given rate, overriding previous heading/s. This slews the vehicle at a controllable rate between it's previous heading and the new one. (affects GUIDED only. Exiting GUIDED returns aircraft to normal behaviour defined elsewhere. Designed for onboard companion-computer command-and-control, not normally operator/GCS control.)</description>
         <param index="1" label="heading type" enum="HEADING_TYPE">course-over-ground or raw vehicle heading.</param>
         <param index="2" label="heading target" units="deg" minValue="0" maxValue="359.99">Target heading.</param>
         <param index="3" label="heading rate-of-change" units="m/s/s">Maximum centripetal accelearation, ie rate of change,  toward new heading.</param>
+        <param index="4">Empty</param>
+        <param index="5">Empty</param>
+        <param index="6">Empty</param>
+        <param index="7">Empty</param>
+      </entry>
+      <entry value="43003" name="MAV_CMD_EXTERNAL_POSITION_ESTIMATE" hasLocation="true" isDestination="false">
+        <description>Provide an external position estimate for use when dead-reckoning. This is meant to be used for occasional position resets that may be provided by a external system such as a remote pilot using landmarks over a video link.</description>
+        <param index="1" label="transmission_time" units="s">Timestamp that this message was sent as a time in the transmitters time domain. The sender should wrap this time back to zero based on required timing accuracy for the application and the limitations of a 32 bit float. For example, wrapping at 10 hours would give approximately 1ms accuracy. Recipient must handle time wrap in any timing jitter correction applied to this field. Wrap rollover time should not be at not more than 250 seconds, which would give approximately 10 microsecond accuracy.</param>
+        <param index="2" label="processing_time" units="s">The time spent in processing the sensor data that is the basis for this position. The recipient can use this to improve time alignment of the data. Set to zero if not known.</param>
+        <param index="3" label="accuracy">estimated one standard deviation accuracy of the measurement. Set to NaN if not known.</param>
+        <param index="4">Empty</param>
+        <param index="5" label="Latitude">Latitude</param>
+        <param index="6" label="Longitude">Longitude</param>
+        <param index="7" label="Altitude" units="m">Altitude, not used. Should be sent as NaN. May be supported in a future version of this message.</param>
+      </entry>
+      <entry value="43005" name="MAV_CMD_SET_HAGL" hasLocation="false" isDestination="false">
+        <description>Provide a value for height above ground level. This can be used for things like fixed wing and VTOL landing.</description>
+        <param index="1" label="hagl" units="m">Height above ground level.</param>
+        <param index="2" label="accuracy" units="m">estimated one standard deviation accuracy of the measurement. Set to NaN if not known.</param>
+        <param index="3" label="timeout" units="s">Timeout for this data. The flight controller should only consider this data valid within the timeout window.</param>
         <param index="4">Empty</param>
         <param index="5">Empty</param>
         <param index="6">Empty</param>
@@ -315,6 +358,38 @@
       </entry>
       <entry value="1" name="SCRIPTING_CMD_REPL_STOP">
         <description>End a REPL session.</description>
+      </entry>
+      <entry value="2" name="SCRIPTING_CMD_STOP">
+        <description>Stop execution of scripts.</description>
+      </entry>
+      <entry value="3" name="SCRIPTING_CMD_STOP_AND_RESTART">
+        <description>Stop execution of scripts and restart.</description>
+      </entry>
+    </enum>
+    <enum name="SECURE_COMMAND_OP">
+      <entry value="0" name="SECURE_COMMAND_GET_SESSION_KEY">
+        <description>Get an 8 byte session key which is used for remote secure updates which operate on flight controller data such as bootloader public keys. Return data will be 8 bytes on success. The session key remains valid until either the flight controller reboots or another SECURE_COMMAND_GET_SESSION_KEY is run.</description>
+      </entry>
+      <entry value="1" name="SECURE_COMMAND_GET_REMOTEID_SESSION_KEY">
+        <description>Get an 8 byte session key which is used for remote secure updates which operate on RemoteID module data. Return data will be 8 bytes on success. The session key remains valid until either the remote ID module reboots or another SECURE_COMMAND_GET_REMOTEID_SESSION_KEY is run.</description>
+      </entry>
+      <entry value="2" name="SECURE_COMMAND_REMOVE_PUBLIC_KEYS">
+        <description>Remove range of public keys from the bootloader. Command data consists of two bytes, first byte if index of first public key to remove. Second byte is the number of keys to remove. If all keys are removed then secure boot is disabled and insecure firmware can be loaded.</description>
+      </entry>
+      <entry value="3" name="SECURE_COMMAND_GET_PUBLIC_KEYS">
+        <description>Get current public keys from the bootloader. Command data consists of two bytes, first byte is index of first public key to fetch, 2nd byte is number of keys to fetch. Total data needs to fit in data portion of reply (max 6 keys for 32 byte keys). Reply data has the index of the first key in the first byte, followed by the keys. Returned keys may be less than the number of keys requested if there are less keys installed than requested.</description>
+      </entry>
+      <entry value="4" name="SECURE_COMMAND_SET_PUBLIC_KEYS">
+        <description>Set current public keys in the bootloader. Data consists of a one byte public key index followed by the public keys. With 32 byte keys this allows for up to 6 keys to be set in one request. Keys outside of the range that is being set will remain unchanged.</description>
+      </entry>
+      <entry value="5" name="SECURE_COMMAND_GET_REMOTEID_CONFIG">
+        <description>Get config data for remote ID module. This command should be sent to the component ID of the flight controller which will forward it to the RemoteID module either over mavlink or DroneCAN. Data format is specific to the RemoteID implementation, see RemoteID firmware documentation for details.</description>
+      </entry>
+      <entry value="6" name="SECURE_COMMAND_SET_REMOTEID_CONFIG">
+        <description>Set config data for remote ID module. This command should be sent to the component ID of the flight controller which will forward it to the RemoteID module either over mavlink or DroneCAN. Data format is specific to the RemoteID implementation, see RemoteID firmware documentation for details.</description>
+      </entry>
+      <entry value="7" name="SECURE_COMMAND_FLASH_BOOTLOADER">
+        <description>Flash bootloader from local storage. Data is the filename to use for the bootloader. This is intended to be used with MAVFtp to upload a new bootloader to a microSD before flashing.</description>
       </entry>
     </enum>
     <!-- AP_Limits Enums -->
@@ -339,7 +414,7 @@
       </entry>
     </enum>
     <!-- AP_Limits Modules - power of 2 (1,2,4,8,16,32 etc) so we can send as bitfield -->
-    <enum name="LIMIT_MODULE">
+    <enum name="LIMIT_MODULE" bitmask="true">
       <entry value="1" name="LIMIT_GPSLOCK">
         <description>Pre-initialization.</description>
       </entry>
@@ -351,7 +426,7 @@
       </entry>
     </enum>
     <!-- RALLY flags - power of 2 (1,2,4,8,16,32,64,128) so we can send as a bitfield -->
-    <enum name="RALLY_FLAGS">
+    <enum name="RALLY_FLAGS" bitmask="true">
       <description>Flags in RALLY_POINT message.</description>
       <entry value="1" name="FAVORABLE_WIND">
         <description>Flag set when requiring favorable winds for landing.</description>
@@ -359,28 +434,11 @@
       <entry value="2" name="LAND_IMMEDIATELY">
         <description>Flag set when plane is to immediately descend to break altitude and land without GCS intervention. Flag not set when plane is to loiter at Rally point until commanded to land.</description>
       </entry>
-    </enum>
-    <!-- gripper action enum -->
-    <enum name="GRIPPER_ACTIONS">
-      <description>Gripper actions.</description>
-      <entry value="0" name="GRIPPER_ACTION_RELEASE">
-        <description>Gripper release cargo.</description>
+      <entry value="4" name="ALT_FRAME_VALID">
+        <description>True if the following altitude frame value is valid.</description>
       </entry>
-      <entry value="1" name="GRIPPER_ACTION_GRAB">
-        <description>Gripper grab onto cargo.</description>
-      </entry>
-    </enum>
-    <!-- Winch action enum -->
-    <enum name="WINCH_ACTIONS">
-      <description>Winch actions.</description>
-      <entry value="0" name="WINCH_RELAXED">
-        <description>Relax winch.</description>
-      </entry>
-      <entry value="1" name="WINCH_RELATIVE_LENGTH_CONTROL">
-        <description>Winch unwinds or winds specified length of cable optionally using specified rate.</description>
-      </entry>
-      <entry value="2" name="WINCH_RATE_CONTROL">
-        <description>Winch unwinds or winds cable at specified rate in meters/seconds.</description>
+      <entry value="24" name="ALT_FRAME">
+        <description>2 bit value representing altitude frame. 0: absolute, 1: relative home, 2: relative origin, 3: relative terrain</description>
       </entry>
     </enum>
     <!-- Camera event types -->
@@ -497,7 +555,7 @@
         <description>An unrecoverable error was encountered with the connected GoPro, it may require a power cycle.</description>
       </entry>
     </enum>
-    <enum name="GOPRO_HEARTBEAT_FLAGS">
+    <enum name="GOPRO_HEARTBEAT_FLAGS" bitmask="true">
       <!-- each entry is a mask to test a bit in GOPRO_HEARTBEAT_STATUS.flags -->
       <entry value="1" name="GOPRO_FLAG_RECORDING">
         <description>GoPro is currently recording.</description>
@@ -691,7 +749,7 @@
         <description>0x02: Narrow.</description>
       </entry>
     </enum>
-    <enum name="GOPRO_VIDEO_SETTINGS_FLAGS">
+    <enum name="GOPRO_VIDEO_SETTINGS_FLAGS" bitmask="true">
       <entry value="1" name="GOPRO_VIDEO_SETTINGS_TV_MODE">
         <description>0=NTSC, 1=PAL.</description>
       </entry>
@@ -885,6 +943,17 @@
         <description>30 Shots / 6 Second.</description>
       </entry>
     </enum>
+    <enum name="MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL">
+      <entry value="0" name="MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL_LOW">
+        <description>Switch Low.</description>
+      </entry>
+      <entry value="1" name="MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL_MIDDLE">
+        <description>Switch Middle.</description>
+      </entry>
+      <entry value="2" name="MAV_CMD_DO_AUX_FUNCTION_SWITCH_LEVEL_HIGH">
+        <description>Switch High.</description>
+      </entry>
+    </enum>
     <!-- led control pattern enums (enumeration of specific patterns) -->
     <enum name="LED_CONTROL_PATTERN">
       <entry value="0" name="LED_CONTROL_PATTERN_OFF">
@@ -898,7 +967,7 @@
       </entry>
     </enum>
     <!-- EKF_STATUS_FLAGS - these values should be bit-and with the messages flags field to know if flag has been set -->
-    <enum name="EKF_STATUS_FLAGS">
+    <enum name="EKF_STATUS_FLAGS" bitmask="true">
       <description>Flags in EKF_STATUS message.</description>
       <entry value="1" name="EKF_ATTITUDE">
         <description>Set if EKF's attitude estimate is good.</description>
@@ -930,6 +999,9 @@
       <entry value="512" name="EKF_PRED_POS_HORIZ_ABS">
         <description>Set if EKF's predicted horizontal position (absolute) estimate is good.</description>
       </entry>
+      <entry value="32768" name="EKF_GPS_GLITCHING">
+        <description>Set if EKF believes the GPS input data is faulty.</description>
+      </entry>
       <entry value="1024" name="EKF_UNINITIALIZED">
         <description>Set if EKF has never been healthy.</description>
       </entry>
@@ -941,16 +1013,6 @@
       <entry value="4" name="PID_TUNING_ACCZ"/>
       <entry value="5" name="PID_TUNING_STEER"/>
       <entry value="6" name="PID_TUNING_LANDING"/>
-    </enum>
-    <enum name="MAG_CAL_STATUS">
-      <entry value="0" name="MAG_CAL_NOT_STARTED"/>
-      <entry value="1" name="MAG_CAL_WAITING_TO_START"/>
-      <entry value="2" name="MAG_CAL_RUNNING_STEP_ONE"/>
-      <entry value="3" name="MAG_CAL_RUNNING_STEP_TWO"/>
-      <entry value="4" name="MAG_CAL_SUCCESS"/>
-      <entry value="5" name="MAG_CAL_FAILED"/>
-      <entry value="6" name="MAG_CAL_BAD_ORIENTATION"/>
-      <entry value="7" name="MAG_CAL_BAD_RADIUS"/>
     </enum>
     <enum name="MAV_REMOTE_LOG_DATA_BLOCK_COMMANDS">
       <description>Special ACK block numbers control activation of dataflash log streaming.</description>
@@ -1009,92 +1071,270 @@
     </enum>
     <enum name="PLANE_MODE">
       <description>A mapping of plane flight modes for custom_mode field of heartbeat.</description>
-      <entry value="0" name="PLANE_MODE_MANUAL"/>
-      <entry value="1" name="PLANE_MODE_CIRCLE"/>
-      <entry value="2" name="PLANE_MODE_STABILIZE"/>
-      <entry value="3" name="PLANE_MODE_TRAINING"/>
-      <entry value="4" name="PLANE_MODE_ACRO"/>
-      <entry value="5" name="PLANE_MODE_FLY_BY_WIRE_A"/>
-      <entry value="6" name="PLANE_MODE_FLY_BY_WIRE_B"/>
-      <entry value="7" name="PLANE_MODE_CRUISE"/>
-      <entry value="8" name="PLANE_MODE_AUTOTUNE"/>
-      <entry value="10" name="PLANE_MODE_AUTO"/>
-      <entry value="11" name="PLANE_MODE_RTL"/>
-      <entry value="12" name="PLANE_MODE_LOITER"/>
-      <entry value="13" name="PLANE_MODE_TAKEOFF"/>
-      <entry value="14" name="PLANE_MODE_AVOID_ADSB"/>
-      <entry value="15" name="PLANE_MODE_GUIDED"/>
-      <entry value="16" name="PLANE_MODE_INITIALIZING"/>
-      <entry value="17" name="PLANE_MODE_QSTABILIZE"/>
-      <entry value="18" name="PLANE_MODE_QHOVER"/>
-      <entry value="19" name="PLANE_MODE_QLOITER"/>
-      <entry value="20" name="PLANE_MODE_QLAND"/>
-      <entry value="21" name="PLANE_MODE_QRTL"/>
-      <entry value="22" name="PLANE_MODE_QAUTOTUNE"/>
-      <entry value="23" name="PLANE_MODE_QACRO"/>
+      <entry value="0" name="PLANE_MODE_MANUAL">
+        <description>MANUAL</description>
+      </entry>
+      <entry value="1" name="PLANE_MODE_CIRCLE">
+        <description>CIRCLE</description>
+      </entry>
+      <entry value="2" name="PLANE_MODE_STABILIZE">
+        <description>STABILIZE</description>
+      </entry>
+      <entry value="3" name="PLANE_MODE_TRAINING">
+        <description>TRAINING</description>
+      </entry>
+      <entry value="4" name="PLANE_MODE_ACRO">
+        <description>ACRO</description>
+      </entry>
+      <entry value="5" name="PLANE_MODE_FLY_BY_WIRE_A">
+        <description>FBWA</description>
+      </entry>
+      <entry value="6" name="PLANE_MODE_FLY_BY_WIRE_B">
+        <description>FBWB</description>
+      </entry>
+      <entry value="7" name="PLANE_MODE_CRUISE">
+        <description>CRUISE</description>
+      </entry>
+      <entry value="8" name="PLANE_MODE_AUTOTUNE">
+        <description>AUTOTUNE</description>
+      </entry>
+      <entry value="10" name="PLANE_MODE_AUTO">
+        <description>AUTO</description>
+      </entry>
+      <entry value="11" name="PLANE_MODE_RTL">
+        <description>RTL</description>
+      </entry>
+      <entry value="12" name="PLANE_MODE_LOITER">
+        <description>LOITER</description>
+      </entry>
+      <entry value="13" name="PLANE_MODE_TAKEOFF">
+        <description>TAKEOFF</description>
+      </entry>
+      <entry value="14" name="PLANE_MODE_AVOID_ADSB">
+        <description>AVOID ADSB</description>
+      </entry>
+      <entry value="15" name="PLANE_MODE_GUIDED">
+        <description>GUIDED</description>
+      </entry>
+      <entry value="16" name="PLANE_MODE_INITIALIZING">
+        <description>INITIALISING</description>
+      </entry>
+      <entry value="17" name="PLANE_MODE_QSTABILIZE">
+        <description>QSTABILIZE</description>
+      </entry>
+      <entry value="18" name="PLANE_MODE_QHOVER">
+        <description>QHOVER</description>
+      </entry>
+      <entry value="19" name="PLANE_MODE_QLOITER">
+        <description>QLOITER</description>
+      </entry>
+      <entry value="20" name="PLANE_MODE_QLAND">
+        <description>QLAND</description>
+      </entry>
+      <entry value="21" name="PLANE_MODE_QRTL">
+        <description>QRTL</description>
+      </entry>
+      <entry value="22" name="PLANE_MODE_QAUTOTUNE">
+        <description>QAUTOTUNE</description>
+      </entry>
+      <entry value="23" name="PLANE_MODE_QACRO">
+        <description>QACRO</description>
+      </entry>
+      <entry value="24" name="PLANE_MODE_THERMAL">
+        <description>THERMAL</description>
+      </entry>
+      <entry value="25" name="PLANE_MODE_LOITER_ALT_QLAND">
+        <description>LOITER2QLAND</description>
+      </entry>
+      <entry value="26" name="PLANE_MODE_AUTOLAND">
+        <description>AUTOLAND</description>
+      </entry>
     </enum>
     <enum name="COPTER_MODE">
       <description>A mapping of copter flight modes for custom_mode field of heartbeat.</description>
-      <entry value="0" name="COPTER_MODE_STABILIZE"/>
-      <entry value="1" name="COPTER_MODE_ACRO"/>
-      <entry value="2" name="COPTER_MODE_ALT_HOLD"/>
-      <entry value="3" name="COPTER_MODE_AUTO"/>
-      <entry value="4" name="COPTER_MODE_GUIDED"/>
-      <entry value="5" name="COPTER_MODE_LOITER"/>
-      <entry value="6" name="COPTER_MODE_RTL"/>
-      <entry value="7" name="COPTER_MODE_CIRCLE"/>
-      <entry value="9" name="COPTER_MODE_LAND"/>
-      <entry value="11" name="COPTER_MODE_DRIFT"/>
-      <entry value="13" name="COPTER_MODE_SPORT"/>
-      <entry value="14" name="COPTER_MODE_FLIP"/>
-      <entry value="15" name="COPTER_MODE_AUTOTUNE"/>
-      <entry value="16" name="COPTER_MODE_POSHOLD"/>
-      <entry value="17" name="COPTER_MODE_BRAKE"/>
-      <entry value="18" name="COPTER_MODE_THROW"/>
-      <entry value="19" name="COPTER_MODE_AVOID_ADSB"/>
-      <entry value="20" name="COPTER_MODE_GUIDED_NOGPS"/>
-      <entry value="21" name="COPTER_MODE_SMART_RTL"/>
-      <entry value="22" name="COPTER_MODE_FLOWHOLD"/>
-      <entry value="23" name="COPTER_MODE_FOLLOW"/>
-      <entry value="24" name="COPTER_MODE_ZIGZAG"/>
-      <entry value="25" name="COPTER_MODE_SYSTEMID"/>
-      <entry value="26" name="COPTER_MODE_AUTOROTATE"/>
+      <entry value="0" name="COPTER_MODE_STABILIZE">
+        <description>STABILIZE</description>
+      </entry>
+      <entry value="1" name="COPTER_MODE_ACRO">
+        <description>ACRO</description>
+      </entry>
+      <entry value="2" name="COPTER_MODE_ALT_HOLD">
+        <description>ALT HOLD</description>
+      </entry>
+      <entry value="3" name="COPTER_MODE_AUTO">
+        <description>AUTO</description>
+      </entry>
+      <entry value="4" name="COPTER_MODE_GUIDED">
+        <description>GUIDED</description>
+      </entry>
+      <entry value="5" name="COPTER_MODE_LOITER">
+        <description>LOITER</description>
+      </entry>
+      <entry value="6" name="COPTER_MODE_RTL">
+        <description>RTL</description>
+      </entry>
+      <entry value="7" name="COPTER_MODE_CIRCLE">
+        <description>CIRCLE</description>
+      </entry>
+      <entry value="9" name="COPTER_MODE_LAND">
+        <description>LAND</description>
+      </entry>
+      <entry value="11" name="COPTER_MODE_DRIFT">
+        <description>DRIFT</description>
+      </entry>
+      <entry value="13" name="COPTER_MODE_SPORT">
+        <description>SPORT</description>
+      </entry>
+      <entry value="14" name="COPTER_MODE_FLIP">
+        <description>FLIP</description>
+      </entry>
+      <entry value="15" name="COPTER_MODE_AUTOTUNE">
+        <description>AUTOTUNE</description>
+      </entry>
+      <entry value="16" name="COPTER_MODE_POSHOLD">
+        <description>POSHOLD</description>
+      </entry>
+      <entry value="17" name="COPTER_MODE_BRAKE">
+        <description>BRAKE</description>
+      </entry>
+      <entry value="18" name="COPTER_MODE_THROW">
+        <description>THROW</description>
+      </entry>
+      <entry value="19" name="COPTER_MODE_AVOID_ADSB">
+        <description>AVOID ADSB</description>
+      </entry>
+      <entry value="20" name="COPTER_MODE_GUIDED_NOGPS">
+        <description>GUIDED NOGPS</description>
+      </entry>
+      <entry value="21" name="COPTER_MODE_SMART_RTL">
+        <description>SMARTRTL</description>
+      </entry>
+      <entry value="22" name="COPTER_MODE_FLOWHOLD">
+        <description>FLOWHOLD</description>
+      </entry>
+      <entry value="23" name="COPTER_MODE_FOLLOW">
+        <description>FOLLOW</description>
+      </entry>
+      <entry value="24" name="COPTER_MODE_ZIGZAG">
+        <description>ZIGZAG</description>
+      </entry>
+      <entry value="25" name="COPTER_MODE_SYSTEMID">
+        <description>SYSTEMID</description>
+      </entry>
+      <entry value="26" name="COPTER_MODE_AUTOROTATE">
+        <description>AUTOROTATE</description>
+      </entry>
+      <entry value="27" name="COPTER_MODE_AUTO_RTL">
+        <description>AUTO RTL</description>
+      </entry>
+      <entry value="28" name="COPTER_MODE_TURTLE">
+        <description>TURTLE</description>
+      </entry>
     </enum>
     <enum name="SUB_MODE">
       <description>A mapping of sub flight modes for custom_mode field of heartbeat.</description>
-      <entry value="0" name="SUB_MODE_STABILIZE"/>
-      <entry value="1" name="SUB_MODE_ACRO"/>
-      <entry value="2" name="SUB_MODE_ALT_HOLD"/>
-      <entry value="3" name="SUB_MODE_AUTO"/>
-      <entry value="4" name="SUB_MODE_GUIDED"/>
-      <entry value="7" name="SUB_MODE_CIRCLE"/>
-      <entry value="9" name="SUB_MODE_SURFACE"/>
-      <entry value="16" name="SUB_MODE_POSHOLD"/>
-      <entry value="19" name="SUB_MODE_MANUAL"/>
+      <entry value="0" name="SUB_MODE_STABILIZE">
+        <description>STABILIZE</description>
+      </entry>
+      <entry value="1" name="SUB_MODE_ACRO">
+        <description>ACRO</description>
+      </entry>
+      <entry value="2" name="SUB_MODE_ALT_HOLD">
+        <description>ALT HOLD</description>
+      </entry>
+      <entry value="3" name="SUB_MODE_AUTO">
+        <description>AUTO</description>
+      </entry>
+      <entry value="4" name="SUB_MODE_GUIDED">
+        <description>GUIDED</description>
+      </entry>
+      <entry value="7" name="SUB_MODE_CIRCLE">
+        <description>CIRCLE</description>
+      </entry>
+      <entry value="9" name="SUB_MODE_SURFACE">
+        <description>SURFACE</description>
+      </entry>
+      <entry value="16" name="SUB_MODE_POSHOLD">
+        <description>POSHOLD</description>
+      </entry>
+      <entry value="19" name="SUB_MODE_MANUAL">
+        <description>MANUAL</description>
+      </entry>
+      <entry value="20" name="SUB_MODE_MOTORDETECT">
+        <description>MOTORDETECT</description>
+      </entry>
+      <entry value="21" name="SUB_MODE_SURFTRAK">
+        <description>SURFTRAK</description>
+      </entry>
     </enum>
     <enum name="ROVER_MODE">
       <description>A mapping of rover flight modes for custom_mode field of heartbeat.</description>
-      <entry value="0" name="ROVER_MODE_MANUAL"/>
-      <entry value="1" name="ROVER_MODE_ACRO"/>
-      <entry value="3" name="ROVER_MODE_STEERING"/>
-      <entry value="4" name="ROVER_MODE_HOLD"/>
-      <entry value="5" name="ROVER_MODE_LOITER"/>
-      <entry value="6" name="ROVER_MODE_FOLLOW"/>
-      <entry value="7" name="ROVER_MODE_SIMPLE"/>
-      <entry value="10" name="ROVER_MODE_AUTO"/>
-      <entry value="11" name="ROVER_MODE_RTL"/>
-      <entry value="12" name="ROVER_MODE_SMART_RTL"/>
-      <entry value="15" name="ROVER_MODE_GUIDED"/>
-      <entry value="16" name="ROVER_MODE_INITIALIZING"/>
+      <entry value="0" name="ROVER_MODE_MANUAL">
+        <description>MANUAL</description>
+      </entry>
+      <entry value="1" name="ROVER_MODE_ACRO">
+        <description>ACRO</description>
+      </entry>
+      <entry value="3" name="ROVER_MODE_STEERING">
+        <description>STEERING</description>
+      </entry>
+      <entry value="4" name="ROVER_MODE_HOLD">
+        <description>HOLD</description>
+      </entry>
+      <entry value="5" name="ROVER_MODE_LOITER">
+        <description>LOITER</description>
+      </entry>
+      <entry value="6" name="ROVER_MODE_FOLLOW">
+        <description>FOLLOW</description>
+      </entry>
+      <entry value="7" name="ROVER_MODE_SIMPLE">
+        <description>SIMPLE</description>
+      </entry>
+      <entry value="8" name="ROVER_MODE_DOCK">
+        <description>DOCK</description>
+      </entry>
+      <entry value="9" name="ROVER_MODE_CIRCLE">
+        <description>CIRCLE</description>
+      </entry>
+      <entry value="10" name="ROVER_MODE_AUTO">
+        <description>AUTO</description>
+      </entry>
+      <entry value="11" name="ROVER_MODE_RTL">
+        <description>RTL</description>
+      </entry>
+      <entry value="12" name="ROVER_MODE_SMART_RTL">
+        <description>SMART RTL</description>
+      </entry>
+      <entry value="15" name="ROVER_MODE_GUIDED">
+        <description>GUIDED</description>
+      </entry>
+      <entry value="16" name="ROVER_MODE_INITIALIZING">
+        <description>INITIALISING</description>
+      </entry>
     </enum>
     <enum name="TRACKER_MODE">
       <description>A mapping of antenna tracker flight modes for custom_mode field of heartbeat.</description>
-      <entry value="0" name="TRACKER_MODE_MANUAL"/>
-      <entry value="1" name="TRACKER_MODE_STOP"/>
-      <entry value="2" name="TRACKER_MODE_SCAN"/>
-      <entry value="3" name="TRACKER_MODE_SERVO_TEST"/>
-      <entry value="10" name="TRACKER_MODE_AUTO"/>
-      <entry value="16" name="TRACKER_MODE_INITIALIZING"/>
+      <entry value="0" name="TRACKER_MODE_MANUAL">
+        <description>MANUAL</description>
+      </entry>
+      <entry value="1" name="TRACKER_MODE_STOP">
+        <description>STOP</description>
+      </entry>
+      <entry value="2" name="TRACKER_MODE_SCAN">
+        <description>SCAN</description>
+      </entry>
+      <entry value="3" name="TRACKER_MODE_SERVO_TEST">
+        <description>SERVO TEST</description>
+      </entry>
+      <entry value="4" name="TRACKER_MODE_GUIDED">
+        <description>GUIDED</description>
+      </entry>
+      <entry value="10" name="TRACKER_MODE_AUTO">
+        <description>AUTO</description>
+      </entry>
+      <entry value="16" name="TRACKER_MODE_INITIALIZING">
+        <description>INITIALISING</description>
+      </entry>
     </enum>
     <enum name="OSD_PARAM_CONFIG_TYPE">
       <description>The type of parameter for the OSD parameter editor.</description>
@@ -1118,6 +1358,7 @@
   </enums>
   <messages>
     <message id="150" name="SENSOR_OFFSETS">
+      <deprecated since="2022-02" replaced_by="MAG_CAL_REPORT, Accel Parameters, and Gyro Parameters"/>
       <description>Offsets and calibrations values for hardware sensors. This makes it easier to debug the calibration process.</description>
       <field type="int16_t" name="mag_ofs_x">Magnetometer X offset.</field>
       <field type="int16_t" name="mag_ofs_y">Magnetometer Y offset.</field>
@@ -1142,7 +1383,7 @@
       <field type="int16_t" name="mag_ofs_z">Magnetometer Z offset.</field>
     </message>
     <message id="152" name="MEMINFO">
-      <description>State of APM memory.</description>
+      <description>State of autopilot RAM.</description>
       <field type="uint16_t" name="brkval">Heap top.</field>
       <field type="uint16_t" name="freemem" units="bytes">Free memory.</field>
       <extensions/>
@@ -1205,12 +1446,14 @@
       <field type="uint8_t" name="save_position">If "1" it will save current trimmed position on EEPROM (just valid for NEUTRAL and LANDING).</field>
     </message>
     <message id="158" name="MOUNT_STATUS">
-      <description>Message with some status from APM to GCS about camera or antenna mount.</description>
+      <description>Message with some status from autopilot to GCS about camera or antenna mount.</description>
       <field type="uint8_t" name="target_system">System ID.</field>
       <field type="uint8_t" name="target_component">Component ID.</field>
       <field type="int32_t" name="pointing_a" units="cdeg">Pitch.</field>
       <field type="int32_t" name="pointing_b" units="cdeg">Roll.</field>
       <field type="int32_t" name="pointing_c" units="cdeg">Yaw.</field>
+      <extensions/>
+      <field type="uint8_t" name="mount_mode" enum="MAV_MOUNT_MODE">Mount operating mode.</field>
     </message>
     <!-- geo-fence messages -->
     <message id="160" name="FENCE_POINT">
@@ -1462,7 +1705,7 @@
     </message>
     <message id="191" name="MAG_CAL_PROGRESS">
       <description>Reports progress of compass calibration.</description>
-      <field type="uint8_t" name="compass_id">Compass being calibrated.</field>
+      <field type="uint8_t" name="compass_id" instance="true">Compass being calibrated.</field>
       <field type="uint8_t" name="cal_mask" display="bitmask">Bitmask of compasses being calibrated.</field>
       <field type="uint8_t" name="cal_status" enum="MAG_CAL_STATUS">Calibration Status.</field>
       <field type="uint8_t" name="attempt">Attempt number.</field>
@@ -1472,28 +1715,7 @@
       <field type="float" name="direction_y">Body frame direction vector for display.</field>
       <field type="float" name="direction_z">Body frame direction vector for display.</field>
     </message>
-    <message id="192" name="MAG_CAL_REPORT">
-      <description>Reports results of completed compass calibration. Sent until MAG_CAL_ACK received.</description>
-      <field type="uint8_t" name="compass_id">Compass being calibrated.</field>
-      <field type="uint8_t" name="cal_mask" display="bitmask">Bitmask of compasses being calibrated.</field>
-      <field type="uint8_t" name="cal_status" enum="MAG_CAL_STATUS">Calibration Status.</field>
-      <field type="uint8_t" name="autosaved">0=requires a MAV_CMD_DO_ACCEPT_MAG_CAL, 1=saved to parameters.</field>
-      <field type="float" name="fitness" units="mgauss">RMS milligauss residuals.</field>
-      <field type="float" name="ofs_x">X offset.</field>
-      <field type="float" name="ofs_y">Y offset.</field>
-      <field type="float" name="ofs_z">Z offset.</field>
-      <field type="float" name="diag_x">X diagonal (matrix 11).</field>
-      <field type="float" name="diag_y">Y diagonal (matrix 22).</field>
-      <field type="float" name="diag_z">Z diagonal (matrix 33).</field>
-      <field type="float" name="offdiag_x">X off-diagonal (matrix 12 and 21).</field>
-      <field type="float" name="offdiag_y">Y off-diagonal (matrix 13 and 31).</field>
-      <field type="float" name="offdiag_z">Z off-diagonal (matrix 32 and 23).</field>
-      <extensions/>
-      <field type="float" name="orientation_confidence">Confidence in orientation (higher is better).</field>
-      <field type="uint8_t" name="old_orientation" enum="MAV_SENSOR_ORIENTATION">orientation before calibration.</field>
-      <field type="uint8_t" name="new_orientation" enum="MAV_SENSOR_ORIENTATION">orientation after calibration.</field>
-      <field type="float" name="scale_factor">field radius correction factor</field>
-    </message>
+    <!-- 192 MAG_CAL_REPORT moved to common.xml -->
     <!-- EKF status message from autopilot to GCS. -->
     <message id="193" name="EKF_STATUS_REPORT">
       <description>EKF Status message including flags and variances.</description>
@@ -1511,13 +1733,16 @@
     <!-- realtime PID tuning message -->
     <message id="194" name="PID_TUNING">
       <description>PID tuning information.</description>
-      <field type="uint8_t" name="axis" enum="PID_TUNING_AXIS">Axis.</field>
+      <field type="uint8_t" name="axis" enum="PID_TUNING_AXIS" instance="true">Axis.</field>
       <field type="float" name="desired">Desired rate.</field>
       <field type="float" name="achieved">Achieved rate.</field>
       <field type="float" name="FF">FF component.</field>
       <field type="float" name="P">P component.</field>
       <field type="float" name="I">I component.</field>
       <field type="float" name="D">D component.</field>
+      <extensions/>
+      <field type="float" name="SRate">Slew rate.</field>
+      <field type="float" name="PDmod">P/D oscillation modifier.</field>
     </message>
     <message id="195" name="DEEPSTALL">
       <description>Deepstall path planning.</description>
@@ -1596,26 +1821,7 @@
       <field type="uint8_t" name="status" enum="GOPRO_REQUEST_STATUS">Status.</field>
     </message>
     <!-- 219 to 224 RESERVED for more GOPRO-->
-    <message id="225" name="EFI_STATUS">
-      <description>EFI status output</description>
-      <field type="uint8_t" name="health">EFI health status</field>
-      <field type="float" name="ecu_index">ECU index</field>
-      <field type="float" name="rpm">RPM</field>
-      <field type="float" name="fuel_consumed" units="g">Fuel consumed</field>
-      <field type="float" name="fuel_flow" units="g/min">Fuel flow rate</field>
-      <field type="float" name="engine_load" units="%">Engine load</field>
-      <field type="float" name="throttle_position" units="%">Throttle position</field>
-      <field type="float" name="spark_dwell_time" units="ms">Spark dwell time</field>
-      <field type="float" name="barometric_pressure" units="kPa">Barometric pressure</field>
-      <field type="float" name="intake_manifold_pressure" units="kPa">Intake manifold pressure(</field>
-      <field type="float" name="intake_manifold_temperature" units="degC">Intake manifold temperature</field>
-      <field type="float" name="cylinder_head_temperature" units="degC">Cylinder head temperature</field>
-      <field type="float" name="ignition_timing" units="deg">Ignition timing (Crank angle degrees)</field>
-      <field type="float" name="injection_time" units="ms">Injection time</field>
-      <field type="float" name="exhaust_gas_temperature" units="degC">Exhaust gas temperature</field>
-      <field type="float" name="throttle_out" units="%">Output throttle</field>
-      <field type="float" name="pt_compensation">Pressure/temperature compensation</field>
-    </message>
+    <!-- 225 EFI_STATUS moved to common.xml -->
     <message id="226" name="RPM">
       <description>RPM sensor output.</description>
       <field type="float" name="rpm1">RPM Sensor1.</field>
@@ -1666,10 +1872,28 @@
       <field type="uint32_t" name="request_id">Request ID - copied from request.</field>
       <field type="uint8_t" name="result">0 for success, anything else is failure code.</field>
     </message>
+    <message id="11004" name="SECURE_COMMAND">
+      <description>Send a secure command. Data should be signed with a private key corresponding with a public key known to the recipient. Signature should be over the concatenation of the sequence number (little-endian format), the operation (little-endian format) the data and the session key. For SECURE_COMMAND_GET_SESSION_KEY the session key should be zero length. The data array consists of the data followed by the signature. The sum of the data_length and the sig_length cannot be more than 220. The format of the data is command specific.</description>
+      <field type="uint8_t" name="target_system">System ID.</field>
+      <field type="uint8_t" name="target_component">Component ID.</field>
+      <field type="uint32_t" name="sequence">Sequence ID for tagging reply.</field>
+      <field type="uint32_t" name="operation" enum="SECURE_COMMAND_OP">Operation being requested.</field>
+      <field type="uint8_t" name="data_length">Data length.</field>
+      <field type="uint8_t" name="sig_length">Signature length.</field>
+      <field type="uint8_t[220]" name="data">Signed data.</field>
+    </message>
+    <message id="11005" name="SECURE_COMMAND_REPLY">
+      <description>Reply from secure command.</description>
+      <field type="uint32_t" name="sequence">Sequence ID from request.</field>
+      <field type="uint32_t" name="operation" enum="SECURE_COMMAND_OP">Operation that was requested.</field>
+      <field type="uint8_t" name="result" enum="MAV_RESULT">Result of command.</field>
+      <field type="uint8_t" name="data_length">Data length.</field>
+      <field type="uint8_t[220]" name="data">Reply data.</field>
+    </message>
     <!-- realtime Adaptive Controller tuning message -->
     <message id="11010" name="ADAP_TUNING">
       <description>Adaptive Controller tuning information.</description>
-      <field type="uint8_t" name="axis" enum="PID_TUNING_AXIS">Axis.</field>
+      <field type="uint8_t" name="axis" enum="PID_TUNING_AXIS" instance="true">Axis.</field>
       <field type="float" name="desired" units="deg/s">Desired rate.</field>
       <field type="float" name="achieved" units="deg/s">Achieved rate.</field>
       <field type="float" name="error">Error between model and vehicle.</field>
@@ -1688,8 +1912,8 @@
       <description>Camera vision based attitude and position deltas.</description>
       <field name="time_usec" type="uint64_t" units="us">Timestamp (synced to UNIX time or since system boot).</field>
       <field name="time_delta_usec" type="uint64_t" units="us">Time since the last reported camera frame.</field>
-      <field type="float[3]" name="angle_delta">Defines a rotation vector in body frame that rotates the vehicle from the previous to the current orientation.</field>
-      <field type="float[3]" name="position_delta" units="m">Change in position from previous to current frame rotated into body frame (0=forward, 1=right, 2=down).</field>
+      <field type="float[3]" name="angle_delta" units="rad">Defines a rotation vector [roll, pitch, yaw] to the current MAV_FRAME_BODY_FRD from the previous MAV_FRAME_BODY_FRD.</field>
+      <field type="float[3]" name="position_delta" units="m">Change in position to the current MAV_FRAME_BODY_FRD from the previous FRAME_BODY_FRD rotated to the current MAV_FRAME_BODY_FRD.</field>
       <field type="float" name="confidence" units="%">Normalised confidence value from 0 to 100.</field>
     </message>
     <!-- Angle of Attack and Side Slip Angle message -->
@@ -1762,6 +1986,85 @@
       <field type="float" name="max_value">OSD parameter maximum value.</field>
       <field type="float" name="increment">OSD parameter increment.</field>
     </message>
+    <message id="11037" name="OBSTACLE_DISTANCE_3D">
+      <!-- This message is work-in-progress and it can therefore change, and should NOT be used in stable production environments -->
+      <description>Obstacle located as a 3D vector.</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp (time since system boot).</field>
+      <field type="uint8_t" name="sensor_type" enum="MAV_DISTANCE_SENSOR">Class id of the distance sensor type.</field>
+      <field type="uint8_t" name="frame" enum="MAV_FRAME">Coordinate frame of reference.</field>
+      <field type="uint16_t" name="obstacle_id" instance="true"> Unique ID given to each obstacle so that its movement can be tracked. Use UINT16_MAX if object ID is unknown or cannot be determined.</field>
+      <field type="float" name="x" units="m"> X position of the obstacle.</field>
+      <field type="float" name="y" units="m"> Y position of the obstacle.</field>
+      <field type="float" name="z" units="m"> Z position of the obstacle.</field>
+      <field type="float" name="min_distance" units="m">Minimum distance the sensor can measure.</field>
+      <field type="float" name="max_distance" units="m">Maximum distance the sensor can measure.</field>
+    </message>
+    <message id="11038" name="WATER_DEPTH">
+      <description>Water depth</description>
+      <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp (time since system boot)</field>
+      <field type="uint8_t" name="id" instance="true">Onboard ID of the sensor</field>
+      <field type="uint8_t" name="healthy">Sensor data healthy (0=unhealthy, 1=healthy)</field>
+      <field type="int32_t" name="lat" units="degE7">Latitude</field>
+      <field type="int32_t" name="lng" units="degE7">Longitude</field>
+      <field type="float" name="alt" units="m">Altitude (MSL) of vehicle</field>
+      <field type="float" name="roll" units="rad">Roll angle</field>
+      <field type="float" name="pitch" units="rad">Pitch angle</field>
+      <field type="float" name="yaw" units="rad">Yaw angle</field>
+      <field type="float" name="distance" units="m">Distance (uncorrected)</field>
+      <field type="float" name="temperature" units="degC">Water temperature</field>
+    </message>
+    <message id="11039" name="MCU_STATUS">
+      <description>The MCU status, giving MCU temperature and voltage. The min and max voltages are to allow for detecting power supply instability.</description>
+      <field type="uint8_t" name="id" instance="true">MCU instance</field>
+      <field type="int16_t" name="MCU_temperature" units="cdegC">MCU Internal temperature</field>
+      <field type="uint16_t" name="MCU_voltage" units="mV">MCU voltage</field>
+      <field type="uint16_t" name="MCU_voltage_min" units="mV">MCU voltage minimum</field>
+      <field type="uint16_t" name="MCU_voltage_max" units="mV">MCU voltage maximum</field>
+    </message>
+    <message id="11040" name="ESC_TELEMETRY_13_TO_16">
+      <description>ESC Telemetry Data for ESCs 13 to 16, matching data sent by BLHeli ESCs.</description>
+      <field type="uint8_t[4]" name="temperature" units="degC">Temperature.</field>
+      <field type="uint16_t[4]" name="voltage" units="cV">Voltage.</field>
+      <field type="uint16_t[4]" name="current" units="cA">Current.</field>
+      <field type="uint16_t[4]" name="totalcurrent" units="mAh">Total current.</field>
+      <field type="uint16_t[4]" name="rpm" units="rpm">RPM (eRPM).</field>
+      <field type="uint16_t[4]" name="count">count of telemetry packets received (wraps at 65535).</field>
+    </message>
+    <message id="11041" name="ESC_TELEMETRY_17_TO_20">
+      <description>ESC Telemetry Data for ESCs 17 to 20, matching data sent by BLHeli ESCs.</description>
+      <field type="uint8_t[4]" name="temperature" units="degC">Temperature.</field>
+      <field type="uint16_t[4]" name="voltage" units="cV">Voltage.</field>
+      <field type="uint16_t[4]" name="current" units="cA">Current.</field>
+      <field type="uint16_t[4]" name="totalcurrent" units="mAh">Total current.</field>
+      <field type="uint16_t[4]" name="rpm" units="rpm">RPM (eRPM).</field>
+      <field type="uint16_t[4]" name="count">count of telemetry packets received (wraps at 65535).</field>
+    </message>
+    <message id="11042" name="ESC_TELEMETRY_21_TO_24">
+      <description>ESC Telemetry Data for ESCs 21 to 24, matching data sent by BLHeli ESCs.</description>
+      <field type="uint8_t[4]" name="temperature" units="degC">Temperature.</field>
+      <field type="uint16_t[4]" name="voltage" units="cV">Voltage.</field>
+      <field type="uint16_t[4]" name="current" units="cA">Current.</field>
+      <field type="uint16_t[4]" name="totalcurrent" units="mAh">Total current.</field>
+      <field type="uint16_t[4]" name="rpm" units="rpm">RPM (eRPM).</field>
+      <field type="uint16_t[4]" name="count">count of telemetry packets received (wraps at 65535).</field>
+    </message>
+    <message id="11043" name="ESC_TELEMETRY_25_TO_28">
+      <description>ESC Telemetry Data for ESCs 25 to 28, matching data sent by BLHeli ESCs.</description>
+      <field type="uint8_t[4]" name="temperature" units="degC">Temperature.</field>
+      <field type="uint16_t[4]" name="voltage" units="cV">Voltage.</field>
+      <field type="uint16_t[4]" name="current" units="cA">Current.</field>
+      <field type="uint16_t[4]" name="totalcurrent" units="mAh">Total current.</field>
+      <field type="uint16_t[4]" name="rpm" units="rpm">RPM (eRPM).</field>
+      <field type="uint16_t[4]" name="count">count of telemetry packets received (wraps at 65535).</field>
+    </message>
+    <message id="11044" name="ESC_TELEMETRY_29_TO_32">
+      <description>ESC Telemetry Data for ESCs 29 to 32, matching data sent by BLHeli ESCs.</description>
+      <field type="uint8_t[4]" name="temperature" units="degC">Temperature.</field>
+      <field type="uint16_t[4]" name="voltage" units="cV">Voltage.</field>
+      <field type="uint16_t[4]" name="current" units="cA">Current.</field>
+      <field type="uint16_t[4]" name="totalcurrent" units="mAh">Total current.</field>
+      <field type="uint16_t[4]" name="rpm" units="rpm">RPM (eRPM).</field>
+      <field type="uint16_t[4]" name="count">count of telemetry packets received (wraps at 65535).</field>
+    </message>
   </messages>
 </mavlink>
-

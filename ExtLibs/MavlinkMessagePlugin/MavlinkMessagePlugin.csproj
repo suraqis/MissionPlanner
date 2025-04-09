@@ -1,5 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk" ToolsVersion="15.0">  <PropertyGroup>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net472</TargetFramework>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
     <UpgradeBackupLocation>
@@ -30,6 +30,8 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <WarningsAsErrors>$(WarningsAsErrors)</WarningsAsErrors>
+	  <NoWarn>1701;1702;NU1605</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -38,6 +40,8 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <WarningsAsErrors>$(WarningsAsErrors)</WarningsAsErrors>
+	  <NoWarn>1701;1702;NU1605</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

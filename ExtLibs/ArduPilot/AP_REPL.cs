@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MissionPlanner.ArduPilot.Mavlink;
+using MissionPlanner.Utilities;
 
 namespace MissionPlanner.ArduPilot
 {
@@ -34,6 +36,8 @@ namespace MissionPlanner.ArduPilot
         //MAV_CMD_SCRIPTING
         //SCRIPTING_CMD_REPL_START
 
+        public string basepath = "repl/";
+
         public AP_REPL(MAVLinkInterface mavint)
         {
             _mavint = mavint;
@@ -47,30 +51,48 @@ namespace MissionPlanner.ArduPilot
             if (_mavint.doCommandInt(_mavint.MAV.sysid, _mavint.MAV.compid, MAVLink.MAV_CMD.SCRIPTING, 0, 0, 0, 0, 0, 0, 0))
             {
                 _active = true;
-                _timer = new Timer(state =>
+
+                if (!_mavftp.kCmdListDirectory("/", new CancellationTokenSource())
+                    .Any(a => a.Name == "repl"))
                 {
-                    _semaphore.Wait();
+                    if (_mavftp.kCmdListDirectory("/APM/", new CancellationTokenSource())
+                        .Any(a => a.Name == "repl"))
+                    {
+                        NewResponse?.Invoke(this, "Base dir changed to " + "/APM/repl/");
+                        basepath = "/APM/repl/";
+                    }
+                }
+
+                _timer = new Timer(state =>
+                {                
                     try
                     {
+                        _timer.Stop();
+                        _semaphore.Wait();    
+                        _timer.Start(1000);
                         if (!_active)
                             return;
 
                         if (!_mavint.BaseStream.IsOpen)
                             return;
 
-                        if (_mavftp.kCmdOpenFileRO("repl/out", out _outsize, new CancellationTokenSource()))
+                        if (_mavftp.kCmdOpenFileRO(basepath+"out", out _outsize, new CancellationTokenSource()))
                         {
-                            var stream = _mavftp.kCmdReadFile("repl/out", _outsize, _cancellation);
+                            var stream = _mavftp.kCmdReadFile(basepath+"out", _outsize, _cancellation);
 
                             _mavftp.kCmdTerminateSession();
 
                             NewResponse?.Invoke(this,
-                                ASCIIEncoding.ASCII.GetString(stream.GetBuffer().Skip(_outskip).ToArray()));
+                                ASCIIEncoding.UTF8.GetString(stream.ToArray().Skip(_outskip).ToArray()));
 
                             _outskip = (int)stream.Length;
                         }
 
                         _mavftp.kCmdTerminateSession();
+                    } 
+                    catch
+                    {
+                        
                     }
                     finally
                     {
@@ -103,7 +125,7 @@ namespace MissionPlanner.ArduPilot
 
         public void SendLine(string line)
         {
-            SendLine(ASCIIEncoding.ASCII.GetBytes(line));
+            SendLine(ASCIIEncoding.UTF8.GetBytes(line));
         }
 
         private int _sessionwrite = 0;
@@ -114,11 +136,12 @@ namespace MissionPlanner.ArduPilot
             _semaphore.Wait();
             try
             {
-                var list =_mavftp.kCmdListDirectory("repl", new CancellationTokenSource());
+                var list =_mavftp.kCmdListDirectory(basepath.TrimEnd('/'), new CancellationTokenSource());
 
                 var useopen = list.Where(a => a.Name == "in");
 
-                if ((useopen.Count() > 0 && _mavftp.kCmdOpenFileWO("repl/in", ref createsize, new CancellationTokenSource())) || _mavftp.kCmdCreateFile("repl/in", ref createsize, new CancellationTokenSource()))
+                if ((useopen.Count() > 0 && _mavftp.kCmdOpenFileWO(basepath+"in", ref createsize, new CancellationTokenSource())) ||
+                    _mavftp.kCmdCreateFile(basepath+"in", ref createsize, new CancellationTokenSource()))
                 {
                     _mavftp.kCmdWriteFile(bytedata, (uint)(useopen.FirstOrDefault()?.Size ?? 0), "REPL", _cancellation);
                     _mavftp.kCmdTerminateSession();

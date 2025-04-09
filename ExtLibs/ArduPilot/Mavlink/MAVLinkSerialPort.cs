@@ -18,7 +18,7 @@ namespace MissionPlanner.Comms
 
         MAVLinkInterface mavint;
 
-        static KeyValuePair<MAVLink.MAVLINK_MSG_ID, Func<MAVLink.MAVLinkMessage, bool>> subscription;
+        static int subscription;
 
         uint baud = 0;
 
@@ -65,10 +65,11 @@ namespace MissionPlanner.Comms
                 throw new Exception(Strings.No_valid_heartbeats_read_from_port);
             }
 
-            if (subscription.Value != null)
+            if (subscription != 0)
                 mavint.UnSubscribeToPacketType(subscription);
 
-            subscription = mavint.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.SERIAL_CONTROL, ReceviedPacket, true);
+            subscription = mavint.SubscribeToPacketType(MAVLink.MAVLINK_MSG_ID.SERIAL_CONTROL, ReceviedPacket,
+                (byte)mavint.sysidcurrent, (byte)mavint.compidcurrent, true);
 
             bgdata = new Thread(mainloop);
             bgdata.Name = "MAVLinkSerialPort";
@@ -124,7 +125,7 @@ namespace MissionPlanner.Comms
             packetwithdata++;
 
             Console.WriteLine(DateTime.Now.Millisecond + "data count " + item.count);
-                // ASCIIEncoding.ASCII.GetString(item.data, 0, item.count)
+                // ASCIIEncoding.UTF8.GetString(item.data, 0, item.count)
 
             lock (buffer)
             {
@@ -221,7 +222,7 @@ namespace MissionPlanner.Comms
             if (data.Length > 0)
                 Read(data, 0, data.Length);
 
-            string line = Encoding.ASCII.GetString(data, 0, data.Length);
+            string line = Encoding.UTF8.GetString(data, 0, data.Length);
 
             return line;
         }
@@ -243,7 +244,7 @@ namespace MissionPlanner.Comms
 
         public void Write(string text)
         {
-            Write(ASCIIEncoding.ASCII.GetBytes(text), 0, text.Length);
+            Write(ASCIIEncoding.UTF8.GetBytes(text), 0, text.Length);
         }
 
         public void WriteLine(string text)

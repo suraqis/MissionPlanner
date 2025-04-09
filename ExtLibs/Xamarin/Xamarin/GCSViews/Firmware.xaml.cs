@@ -37,12 +37,12 @@ namespace Xamarin.GCSViews
             heli.CommandParameter = APFirmware.MAV_TYPE.HELICOPTER;
             antennatracker.CommandParameter = APFirmware.MAV_TYPE.ANTENNA_TRACKER;
 
-            quad.ImageSource = ImageSource.FromStream(()=>Xamarin.Properties.Resources.FW_icons_2013_logos_04.ToMemoryStream());
-            rover.ImageSource = ImageSource.FromStream(()=>Xamarin.Properties.Resources.rover_11.ToMemoryStream());
-            plane.ImageSource = ImageSource.FromStream(() => Xamarin.Properties.Resources.APM_airframes_001.ToMemoryStream());
-            sub.ImageSource = ImageSource.FromStream(() => Xamarin.Properties.Resources.sub.ToMemoryStream());
-            heli.ImageSource = ImageSource.FromStream(() => Xamarin.Properties.Resources.APM_airframes_08.ToMemoryStream());
-            antennatracker.ImageSource = ImageSource.FromStream(() => Xamarin.Properties.Resources.Antenna_Tracker_01.ToMemoryStream());
+            quad.ImageSource = ImageSource.FromStream(()=> MissionPlanner.Properties.ResourcesX.FW_icons_2013_logos_04.ToMemoryStream());
+            rover.ImageSource = ImageSource.FromStream(()=>MissionPlanner.Properties.ResourcesX.rover_11.ToMemoryStream());
+            plane.ImageSource = ImageSource.FromStream(() => MissionPlanner.Properties.ResourcesX.APM_airframes_001.ToMemoryStream());
+            sub.ImageSource = ImageSource.FromStream(() => MissionPlanner.Properties.ResourcesX.sub.ToMemoryStream());
+            heli.ImageSource = ImageSource.FromStream(() => MissionPlanner.Properties.ResourcesX.APM_airframes_08.ToMemoryStream());
+            antennatracker.ImageSource = ImageSource.FromStream(() => MissionPlanner.Properties.ResourcesX.Antenna_Tracker_01.ToMemoryStream());
 
             Task.Run(() =>
             {
@@ -109,27 +109,33 @@ namespace Xamarin.GCSViews
         private string _message;
         private DeviceInfo detectedport;
         private long? detectedboardid;
-        private async Task LookForPort(APFirmware.MAV_TYPE mavtype)
+        private async Task LookForPort(APFirmware.MAV_TYPE mavtype, bool alloptions = false)
         {
             var ports = await Test.UsbDevices.GetDeviceInfoList();
 
             foreach (var deviceInfo in ports)
             {
                 long? devid = detectedboardid;
+                long[] devids = null;
 
                 // make best guess at board_id based on usb info
                 if (!devid.HasValue)
-                    devid = APFirmware.GetBoardID(deviceInfo);
+                    devids = APFirmware.GetBoardID(deviceInfo);
 
-                if (devid.HasValue && devid.Value != 0)
+                if (devid.HasValue && devid.Value != 0 || alloptions == true || devids != null)
                 {
                     log.InfoFormat("{0}: {1} - {2}", deviceInfo.name, deviceInfo.description, deviceInfo.board);
+
+                    if (devids == null && devid.HasValue)
+                        devids = new long[] { devid.Value };
+                    else if (devids == null)
+                        devids = new long[]{};
 
                     var baseurl = "";
 
                     // get the options for this device
                     var fwitems = APFirmware.Manifest.Firmware.Where(a =>
-                        a.BoardId == devid && a.MavType == mavtype.ToString() &&
+                        devids.Any(devidlocal => devidlocal == a.BoardId) && a.MavType == mavtype.ToString() &&
                         a.MavFirmwareVersionType == REL_Type.ToString()).ToList();
 
                     log.InfoFormat("fwitems.count = {0}", fwitems?.Count);

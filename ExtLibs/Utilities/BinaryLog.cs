@@ -7,6 +7,7 @@ using System.Text;
 using System.IO;
 using System.Runtime.InteropServices;
 using uint8_t = System.Byte;
+using System.Diagnostics;
 
 namespace MissionPlanner.Utilities
 {
@@ -41,19 +42,39 @@ namespace MissionPlanner.Utilities
         {
             public UnionArray(byte[] bytes)
             {
-                this.Shorts = null;
-                this.Bytes = bytes;
+                this._shorts = null;
+                this._bytes = bytes;
             }
 
             [FieldOffset(0)]
-            public byte[] Bytes;
+            byte[] _bytes;
 
             [FieldOffset(0)]
-            public short[] Shorts;
+            short[] _shorts;
+
+            public byte[] Bytes
+            {
+                get
+                {
+                    return _bytes;
+                }
+                set
+                {
+                    _bytes = value;
+                }
+            }
+
+            public ReadOnlySpan<short> Shorts
+            {
+                get
+                {
+                    return new ReadOnlySpan<short>(_shorts, 0, _bytes.Length / 2);
+                }
+            }
 
             public override string ToString()
             {
-                return "[" + String.Join(" ", Shorts.Take((Bytes.Length / 2)).ToList()) + "]";
+                return "[" + String.Join(" ", _shorts.Take((_bytes.Length / 2)).ToList()) + "]";
             }
         }
 
@@ -137,6 +158,19 @@ namespace MissionPlanner.Utilities
                                               {
                                                   if (a.IsNumber())
                                                       return (((IConvertible)a).ToString(CultureInfo.InvariantCulture));
+                                                  else if (a is System.Byte[])
+                                                  {
+                                                      var str = Encoding.ASCII.GetString(a as byte[]).Trim('\0');
+                                                      // Escape \ as \\
+                                                      str = str.Replace("\\", "\\\\");
+                                                      // Escape certain whitespace characters
+                                                      str = str.Replace("\n", "\\n");
+                                                      str = str.Replace("\r", "\\r");
+                                                      str = str.Replace("\t", "\\t");
+                                                      // Escape all other non-printable characters
+                                                      str = str.Select(c => (c < 32 || c > 127) ? $"\\x{Convert.ToByte(c):X2}" : $"{c}").Aggregate((x, y) => $"{x}{y}");
+                                                      return str;
+                                                  }
                                                   else
                                                       return a?.ToString();
                                               })) + "\r\n";
@@ -445,21 +479,22 @@ namespace MissionPlanner.Utilities
         
         private object[] ProcessMessageObjects(byte[] message, string name, string format)
         {
-            char[] form = format.ToCharArray();
-
             int offset = 0;
 
-            List<object> answer = new List<object>();
+            object[] answer = new object[format.Length + 1];
 
-            answer.Add(name);
+            answer[0] = name;
 
-            foreach (char ch in form)
+            int a = 1;
+
+            foreach (char ch in format)
             {
                 var temp = GetObjectFromMessage(ch, message, offset);
-                answer.Add(temp.item);
+                answer[a] = temp.item;
                 offset += temp.size;
+                a++;
             }
-            return answer.ToArray();
+            return answer;
         }
 
         public (object item, int size) GetObjectFromMessage(char type, byte[] message, int offset)
@@ -488,6 +523,9 @@ namespace MissionPlanner.Utilities
 
                 case 'Q':
                     return (BitConverter.ToUInt64(message, offset), 8);
+
+                case 'g':
+                    return (HalfHelper.HalfushortToSingle(BitConverter.ToUInt16(message, offset)), 2);
 
                 case 'f':
                     return (BitConverter.ToSingle(message, offset), 4);
@@ -524,10 +562,10 @@ namespace MissionPlanner.Utilities
                     return (mode, 1);
 
                 case 'Z':
-                    return (Encoding.ASCII.GetString(message, offset, 64).Trim('\0'), 64);
+                    return (new ReadOnlySpan<byte>(message, offset, 64).ToArray(), 64);
 
                 case 'a':
-                    return (new UnionArray(message.Skip(offset).Take(64).ToArray()), 2 * 32);
+                    return (new UnionArray(new ReadOnlySpan<byte>(message, offset, 64).ToArray()), 2 * 32);
 
                 default:
                     return (null, 0);

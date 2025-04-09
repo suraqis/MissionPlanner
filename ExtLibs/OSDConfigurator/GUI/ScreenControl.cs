@@ -17,6 +17,7 @@ namespace OSDConfigurator.GUI
         public static OSDScreen ScreenToCopy { get; set; }
 
         private readonly OSDScreen screen;
+        private readonly IItemCaptionProvider captionProvider;
         private OSDItem selectedItem;
 
         public OSDItem SelectedItem
@@ -48,16 +49,20 @@ namespace OSDConfigurator.GUI
             }
         }
 
-        public ScreenControl(OSDScreen screen)
+        public ScreenControl(OSDScreen screen, IItemCaptionProvider captionProvider)
         {
             this.screen = screen ?? throw new ArgumentNullException(nameof(screen));
+            this.captionProvider = captionProvider;
 
             InitializeComponent();
 
             layoutControl.ScreenControl = this;
             layoutControl.Items = screen.Items;
+            layoutControl.Visualizer = new Visualizer(captionProvider);
            
             cbReducedView.CheckedChanged += (s, e) => SetViewSize();
+            cbUseNameCaptions.CheckedChanged += (s, e) => SetCaptionMode();
+            cbHighDefView.CheckedChanged += (s, e) => SetHighDefView();
 
             btnClearAll.Click += (s, e) => { foreach (var i in screen.Items) i.Enabled.Value = 0; };
 
@@ -67,10 +72,38 @@ namespace OSDConfigurator.GUI
 
             SetViewSize();
         }
-        
+
+        private void SetCaptionMode()
+        {
+            captionProvider.CaptionMode = cbUseNameCaptions.Checked ? CaptionModes.Names : CaptionModes.Realistic;
+            layoutControl.ReDraw();
+        }
+
         private void SetViewSize()
         {
-            layoutControl.CharSize = cbReducedView.Checked ? new Size(12, 18) : new Size(24, 36);
+            if (cbHighDefView.Checked)
+            {
+                layoutControl.CharSize = cbReducedView.Checked ? new Size(12, 18) : new Size(18, 27);
+            }
+            else
+            {
+                layoutControl.CharSize = cbReducedView.Checked ? new Size(12, 18) : new Size(24, 36);
+            }
+        }
+
+        private void SetHighDefView()
+        {
+            if(cbHighDefView.Checked)
+            {
+                layoutControl.ScreenSize = new Size(60, 22);
+                layoutControl.IsHighDef = true;
+            }
+            else
+            {
+                layoutControl.ScreenSize = new Size(30, 16);
+                layoutControl.IsHighDef = false;
+            }
+            SetViewSize();
         }
 
         protected override void OnLoad(EventArgs e)

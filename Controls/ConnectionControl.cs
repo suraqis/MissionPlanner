@@ -92,6 +92,10 @@ namespace MissionPlanner.Controls
                 {
                     var temp = new port_sysid() { compid = (item % 256), sysid = (item / 256), port = port };
 
+                    // exclude GCS's from the list
+                    if (temp.compid == (int)MAVLink.MAV_COMPONENT.MAV_COMP_ID_MISSIONPLANNER)
+                        continue;
+
                     var idx = cmb_sysid.Items.Add(temp);
 
                     if (temp.port == MainV2.comPort && temp.sysid == MainV2.comPort.sysidcurrent && temp.compid == MainV2.comPort.compidcurrent)
@@ -101,7 +105,7 @@ namespace MissionPlanner.Controls
                 }
             }
 
-            if (oldidx == -1 && selectidx != -1)
+            if (/*oldidx == -1 && */ selectidx != -1)
             {
                 cmb_sysid.SelectedIndex = selectidx;
             }
@@ -131,7 +135,9 @@ namespace MissionPlanner.Controls
                     MainV2.comPort.sysidcurrent = temp.sysid;
                     MainV2.comPort.compidcurrent = temp.compid;
 
-                    if (MainV2.comPort.MAV.param.Count == 0 && !(Control.ModifierKeys == Keys.Control))
+                    if (MainV2.comPort.MAV.param.TotalReceived < MainV2.comPort.MAV.param.TotalReported && 
+                        /*MainV2.comPort.MAV.compid == (byte)MAVLink.MAV_COMPONENT.MAV_COMP_ID_AUTOPILOT1 && */
+                        !(Control.ModifierKeys == Keys.Control))
                         MainV2.comPort.getParamList();
 
                     MainV2.View.Reload();

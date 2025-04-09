@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace MissionPlanner.Utilities
 {
@@ -13,7 +14,11 @@ namespace MissionPlanner.Utilities
 
         public static string Running
         {
-            get { if (run) return "Stop Vario"; return "Start Vario"; }
+            get
+            {
+                if (run) return "Stop Vario";
+                return "Start Vario";
+            }
         }
 
         public static void SetValue(float climbrate)
@@ -21,13 +26,13 @@ namespace MissionPlanner.Utilities
             Vario.climbrate = climbrate;
         }
 
-        public static void mainloop(object o)
-        {
-            System.Threading.Thread.CurrentThread.IsBackground = true;
+        public static Action<int, int> Beep = (note, durationms) => { Console.Beep(note, durationms); };
 
+        public static async void mainloop(object o)
+        {
             while (run)
             {
-                float note = climbrate *30 + MidTone;
+                float note = climbrate * 30 + MidTone;
 
                 try
                 {
@@ -37,30 +42,34 @@ namespace MissionPlanner.Utilities
                         // freq , duration
                         if (climbrate > 0)
                         {
-                            Console.Beep((int)note, 300 - (int)(climbrate * 5));
-                            System.Threading.Thread.Sleep(20);
+                            Beep((int)note, 300 - (int)(climbrate * 5));
+                            await Task.Delay(20).ConfigureAwait(false);
                         }
                         else
                         {
-                            Console.Beep((int)note - 50, 600);
+                            Beep((int)note - 50, 600);
                         }
                     }
                     else
                     {
                         // sleep when there is no sound required
-                        System.Threading.Thread.Sleep(100);
+                        await Task.Delay(100).ConfigureAwait(false);
                     }
 
                 }
-                catch { }
-
+                catch
+                {
+                }
             }
         }
 
         public static void Start()
         {
             run = true;
-            System.Threading.ThreadPool.QueueUserWorkItem(mainloop);
+            Task.Run(() =>
+            {
+                mainloop(null);
+            });
         }
 
         public static void Stop()
