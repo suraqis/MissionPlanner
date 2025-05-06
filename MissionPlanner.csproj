@@ -388,7 +388,10 @@
     <None Include="plugins\example21-persistentsimple.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="plugins\example20-multiplepositions.cs">
+    <None Include="plugins\setextpos.cs">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="plugins\multiplepositions.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Include="plugins\example23-switch.cs">
@@ -1075,36 +1078,7 @@
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="plugins\example-watchbutton.cs" />
-    <Compile Remove="plugins\example.cs" />
-    <Compile Remove="plugins\example10-canlogfile.cs" />
-    <Compile Remove="plugins\example11-trace.cs" />
-    <Compile Remove="plugins\example12-forwarding.cs" />
-    <Compile Remove="plugins\example13-herelink2.cs" />
-    <Compile Remove="plugins\example14-mass.cs" />
-    <Compile Remove="plugins\example15-leds.cs" />
-    <Compile Remove="plugins\example16-donate.cs" />
-    <Compile Remove="plugins\example17-menuremove.cs" />
-    <Compile Remove="plugins\example18-externalapi.cs" />
-    <Compile Remove="plugins\example19-multiforward.cs" />
-    <Compile Remove="plugins\example2-menu.cs" />
-    <Compile Remove="plugins\example2.cs" />
-    <Compile Remove="plugins\example20-multiplepositions.cs" />
-    <Compile Remove="plugins\example21-persistentsimple.cs" />
     <Compile Remove="plugins\example22-fontsize.cs" />
-    <Compile Remove="plugins\example3-fencedist.cs" />
-    <Compile Remove="plugins\example3.cs" />
-    <Compile Remove="plugins\example4-herelink.cs" />
-    <Compile Remove="plugins\example4.cs" />
-    <Compile Remove="plugins\example5-latencytracker.cs" />
-    <Compile Remove="plugins\example5.cs" />
-    <Compile Remove="plugins\example6-mapicondesc.cs" />
-    <Compile Remove="plugins\example6.cs" />
-    <Compile Remove="plugins\example7-canrtcm.cs" />
-    <Compile Remove="plugins\example7.cs" />
-    <Compile Remove="plugins\example8-modechange.cs" />
-    <Compile Remove="plugins\example8.cs" />
-    <Compile Remove="plugins\example9-hudonoff.cs" />
     <Compile Remove="plugins\generator.cs" />
     <Compile Remove="plugins\InitialParamsCalculator.cs" />
     <Compile Remove="resedit\**\*.*" />
@@ -1188,6 +1162,6 @@
     <Compile Include="SikRadio\RFDLib\Text.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="plugins\example23-switch.resx" />
+    <None Include="plugins\example23-switch.resx" />
   </ItemGroup>
 </Project>
