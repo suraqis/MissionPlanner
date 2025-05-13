@@ -46,7 +46,7 @@ namespace MissionPlanner.plugins
             col.Add(rootbut);
 
             overlay = new GMapOverlay("positions");
-            FlightData.instance.gMapControl1.Overlays.Add(overlay);
+            FlightData.instance.gMapControl1.Overlays.Insert(0, overlay);
 
             return true;
         }
@@ -157,7 +157,9 @@ namespace MissionPlanner.plugins
             {
                 var marker = new GMapMarkerPlane_edit(pointLatLng, heading, cog, nav_bearing, target, color)
                 { Tag = ID.ToString() + sourcetext, ToolTipText = sourcetext, ToolTipMode = MarkerTooltipMode.OnMouseOver, LastUpdate = DateTime.Now };
+                //int index = overlay.Markers.Count;
                 overlay.Markers.Add(marker);
+
             }
         }
 
