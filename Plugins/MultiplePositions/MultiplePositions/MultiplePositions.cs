@@ -114,12 +114,12 @@ namespace MissionPlanner.plugins
                 //    UpdateOrCreate(new PointLatLng(pos.latitude / 1e7, pos.longitude / 1e7), ID, "HighLatency2");
                 //    break;
                 //}
-                //case MAVLink.MAVLINK_MSG_ID.SIMSTATE:
-                //{
-                //    var pos = (MAVLink.mavlink_simstate_t)message.data;
-                //    UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lng / 1e7), ID, "SimState");
-                //    break;
-                //}
+                case MAVLink.MAVLINK_MSG_ID.SIMSTATE:
+                {
+                    var pos = (MAVLink.mavlink_simstate_t)message.data;
+                    UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lng / 1e7), pos.yaw * 180 / 3.1415f, pos.yaw * 180 / 3.1415f, Host.cs.nav_bearing, Host.cs.target_bearing, ID, "SimState", 1);
+                    break;
+                }
                 //case MAVLink.MAVLINK_MSG_ID.SIM_STATE:
                 //{
                 //    var pos = (MAVLink.mavlink_sim_state_t)message.data;
