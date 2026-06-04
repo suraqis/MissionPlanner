@@ -12,7 +12,7 @@ namespace MissionPlanner.plugins
     public class setextpos : Plugin.Plugin
     {
         public override string Name { get; } = "Set external position";
-        public override string Version { get; } = "0.3";
+        public override string Version { get; } = "0.5";
         public override string Author { get; } = "Alex Chen";
 
         public override bool Exit()
@@ -22,7 +22,10 @@ namespace MissionPlanner.plugins
 
         private ToolStripMenuItem iamherebut;
         private ToolStripMenuItem setwindbut;
+        private ToolStripMenuItem setstartposbut;
+        private ToolStripMenuItem sethomebut;
         private ToolStripMenuItem fakegpsbut;
+
 
         private PointLatLng MouseDownStart;
 
@@ -34,14 +37,19 @@ namespace MissionPlanner.plugins
             setwindbut = new ToolStripMenuItem("[A] Set wind estimate");
             setwindbut.Click += setwindbut_Click;
 
-            fakegpsbut = new ToolStripMenuItem("[A] Set no-GPS takeoff position");
+            setstartposbut = new ToolStripMenuItem("[A] Set no-GPS takeoff position");
+            sethomebut = new ToolStripMenuItem("Set Home");
+            fakegpsbut = new ToolStripMenuItem("Fake GPS");
+            setstartposbut.DropDownItems.Add(sethomebut);
+            setstartposbut.DropDownItems.Add(fakegpsbut);
+            sethomebut.Click += sethomebut_Click;
             fakegpsbut.Click += fakegpsbut_Click;
 
             ToolStripItemCollection col = Host.FDMenuMap.Items;
 
             col.Add(iamherebut);
             col.Add(setwindbut);
-            col.Add(fakegpsbut);
+            col.Add(setstartposbut);
 
             return true;
         }
@@ -55,11 +63,12 @@ namespace MissionPlanner.plugins
             // add click on map handler here
             Host.FDGMapControl.MouseDown -= setposmap_Click;
             Host.FDGMapControl.MouseDown += setposmap_Click;
+            Host.FDGMapControl.Cursor = Cursors.Cross;
 
         }
         private void setposmap_Click(object sender2, EventArgs e)
         {
-
+            Host.FDGMapControl.Cursor = Cursors.Default;
             if (MainV2.comPort.BaseStream.IsOpen)
             {
                 MouseDownStart = Host.FDMenuMapPosition;
@@ -81,22 +90,26 @@ namespace MissionPlanner.plugins
         private void setwindbut_Click(object sender2, EventArgs e)
         {
             string vel_str = Host.cs.wind_vel.ToString("0.0");
+            string vel_acc_str = 1.0f.ToString("0.0");
             string dir_str = Host.cs.wind_dir.ToString("0");
             float wind_vel = 0.0f;
             float wind_dir = 0.0f;
-            float vel_acc = 0.5f;
-            float dir_acc = 1.0f;
+            float vel_acc = 1.0f;
+            float dir_acc = 5.0f;
 
-            if (DialogResult.Cancel == WindInputBox.Show("Enter Wind Estimate", "Wind Speed:", "Wind Direction:", ref vel_str, ref dir_str))
+            if (DialogResult.Cancel == WindInputBox.Show("Enter Wind Estimate", "Wind Speed:", "Wind Speed Accurcay", "Wind Direction:", ref vel_str, ref vel_acc_str, ref dir_str))
                 return;
             if (vel_str == "") vel_str = "0";
+            if (vel_acc_str == "") vel_acc_str = "1.0";
             if (dir_str == "") dir_str = "0";
 
-            if (!float.TryParse(vel_str, out wind_vel) || !float.TryParse(dir_str, out wind_dir))
+            if (!float.TryParse(vel_str, out wind_vel) || !float.TryParse(vel_acc_str, out vel_acc) || !float.TryParse(dir_str, out wind_dir))
             {
                 CustomMessageBox.Show("Bad wind speed or direction");
                 return;
             }
+            vel_acc = Math.Max(wind_vel * 0.05f, vel_acc);
+            dir_acc = Math.Max(180*(float)Math.Atan2(vel_acc, Math.Max(wind_vel, vel_acc))/3.1415f, dir_acc);
 
             if (MainV2.comPort.BaseStream.IsOpen)
             {
@@ -113,7 +126,32 @@ namespace MissionPlanner.plugins
             }
 
         }
+        private void sethomebut_Click(object sender2, EventArgs e)
+        {
 
+            if (DialogResult.Cancel == SetPositionBox.Show("Select position on map", "Click on map to set no-GPS takeoff position"))
+                return;
+
+            // add click on map handler here
+            Host.FDGMapControl.MouseDown -= sethomemap_Click;
+            Host.FDGMapControl.MouseDown += sethomemap_Click;
+            Host.FDGMapControl.Cursor = Cursors.Cross;
+
+        }
+        private async void sethomemap_Click(object sender2, EventArgs e)
+        {
+            PointLatLngAlt location = new PointLatLngAlt();
+            location.Lat = Host.FDMenuMapPosition.Lat;
+            location.Lng = Host.FDMenuMapPosition.Lng;
+            location.Alt = srtm.getAltitude(location.Lat, location.Lng).alt;
+            Host.FDGMapControl.Cursor = Cursors.Default;
+
+            Host.comPort.doCommandInt((byte)MainV2.comPort.sysidcurrent, (byte)MainV2.comPort.compidcurrent,
+                MAVLink.MAV_CMD.DO_SET_HOME, 0, 0, 0, 0, (int)(location.Lat * 1e7),
+                (int)(location.Lng * 1e7), (float)location.Alt);
+
+            Host.FDGMapControl.MouseDown -= sethomemap_Click;
+        }
         private void fakegpsbut_Click(object sender2, EventArgs e)
         {
 
@@ -123,6 +161,7 @@ namespace MissionPlanner.plugins
             // add click on map handler here
             Host.FDGMapControl.MouseDown -= fakegpsmap_Click;
             Host.FDGMapControl.MouseDown += fakegpsmap_Click;
+            Host.FDGMapControl.Cursor = Cursors.Cross;
 
         }
         private async void fakegpsmap_Click(object sender2, EventArgs e)
@@ -131,6 +170,7 @@ namespace MissionPlanner.plugins
             location.Lat = Host.FDMenuMapPosition.Lat;
             location.Lng = Host.FDMenuMapPosition.Lng;
             location.Alt = srtm.getAltitude(location.Lat, location.Lng).alt;
+            Host.FDGMapControl.Cursor = Cursors.Default;
 
             await SendGpsInput(location);
 
@@ -157,16 +197,16 @@ namespace MissionPlanner.plugins
                 lat = (int)(point.Lat * 1e7),
                 lon = (int)(point.Lng * 1e7),
                 alt = (int)point.Alt, 
-                hdop = 0,
-                vdop = 0,
-                vn = 0,
-                ve = 0,
-                vd = 0,
-                speed_accuracy = 0,
-                horiz_accuracy = 0,
-                vert_accuracy = 0,
+                hdop = 0.5f,
+                vdop = 0.5f,
+                vn = 0.0f,
+                ve = 0.0f,
+                vd = 0.0f,
+                speed_accuracy = 1.0f,
+                horiz_accuracy = 1.0f,
+                vert_accuracy = 1.0f,
                 fix_type = 3,
-                satellites_visible = 30,
+                satellites_visible = 50,
                 yaw = (ushort)Host.cs.yaw,
                 time_week_ms = 0,
             };
@@ -174,8 +214,15 @@ namespace MissionPlanner.plugins
             if (/* Host.cs.armed == false && */ Host.cs.gpsstatus2 <= (float)GPS_FIX_TYPE.NO_FIX && Host.cs.airspeed < 5.0)
             {
                 fakegpsbut.Enabled = false;
-                for (int i = 0; i < 100; i++)
+                int i = 0;
+                while (i < 100 && gpsMsg.fix_type == 3)
                 {
+                    i++;
+
+                    //if (Host.cs.ax >= 500.0f) { 
+                    //    gpsMsg.fix_type = 1;
+                    //    gpsMsg.satellites_visible = 0;
+                    //}
                     gpsMsg.time_usec = (ulong)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds * 1000;
                     GetGpsWeekAndWeekMs(DateTime.Now, out gpsMsg.time_week, out gpsMsg.time_week_ms);
 
@@ -188,10 +235,10 @@ namespace MissionPlanner.plugins
                 //    (int)(point.Lng * 1e7), (float)point.Alt);
 
                 //await Task.Delay(100);
-
+               
                 Host.comPort.doCommandInt((byte)MainV2.comPort.sysidcurrent,
-                        (byte)MainV2.comPort.compidcurrent,
-                        MAVLink.MAV_CMD.EXTERNAL_WIND_ESTIMATE, 0.0f, 0.5f, 0.0f, 1.0f, 0, 0, 0);
+                    (byte)MainV2.comPort.compidcurrent,
+                    MAVLink.MAV_CMD.EXTERNAL_WIND_ESTIMATE, 0.0f, 5.0f, 0.0f, 20.0f, 0, 0, 0);
                 fakegpsbut.Enabled = true;
             }
         }

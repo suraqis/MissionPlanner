@@ -89,8 +89,8 @@ namespace SetExtPosPlugin
 
             // Increase the size of the form.
             form.ClientSize = new Size(label.Width + 2 * xMargin, y + buttonOk.Height + yMargin);
-            buttonCancel.Location = new Point(form.ClientSize.Width - buttonCancel.Width - 2 * xMargin, y);
-            buttonOk.Location = new Point(buttonCancel.Location.X - buttonOk.Width - 2 * xMargin, y);
+            buttonOk.Location = new Point(form.ClientSize.Width / 2 - buttonOk.Width - xMargin, y);
+            buttonCancel.Location = new Point(form.ClientSize.Width / 2 + xMargin, y);
 
             // Apply any theme settings
             ApplyTheme?.Invoke(form);
