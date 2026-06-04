@@ -1,31 +1,19 @@
-﻿using MissionPlanner.Controls;
-using MissionPlanner.Utilities;
+﻿using GMap.NET;
+using GMap.NET.WindowsForms;
+using MissionPlanner.GCSViews;
+using MissionPlanner.Maps;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using GMap.NET;
-using GMap.NET.WindowsForms;
-using GMap.NET.WindowsForms.Markers;
-using MissionPlanner.GCSViews;
-using System.Drawing;
-using System.Runtime.Serialization;
-using MissionPlanner.Maps;
 
-//TODO: Set overlay order below main UAV marker 
-//TODO: Make switch for every position type
 namespace MissionPlanner.plugins
 {
     public class MultiplePositions : Plugin.Plugin
     {
         public override string Name { get; } = "Multiple UAV positions";
 
-        public override string Version { get; } = "0.1";
+        public override string Version { get; } = "0.4";
 
         public override string Author { get; } = "Alex Chen";
 
@@ -36,41 +24,49 @@ namespace MissionPlanner.plugins
 
         private GMapOverlay overlay;
         private ToolStripMenuItem rootbut;
-        private bool active = false;
+        private Dictionary<String, bool> displayItems;
 
         public override bool Init()
         {
-            rootbut = new ToolStripMenuItem("Show multiple positions");
-            rootbut.Click += but_Click;
+            return true;
+        }
+
+        public override bool Loaded()
+        {
+            rootbut = new ToolStripMenuItem("[A] Show multiple positions");
             ToolStripItemCollection col = Host.FDMenuMap.Items;
             col.Add(rootbut);
+            displayItems = new Dictionary<string, bool>()
+            {
+                {"GPS1", false},
+                {"GPS2", false},
+                {"AHRS2", false},
+                //{"AHRS3", false},
+                //{"HighLatency", false},
+                //{"HighLatency2", false},
+                {"SimState", false},
+            };
+            foreach (var item in displayItems)
+            {
+                var but = new ToolStripMenuItem(item.Key);
+                var key = item.Key;
+                but.CheckOnClick = true;
+                but.Checked = item.Value;
+                but.Click += (s, e) =>
+                {
+                    var clickedButton = (ToolStripMenuItem)s;  
+                    displayItems[key] = clickedButton.Checked;
+                };
+                rootbut.DropDownItems.Add(but);
+            }
 
             overlay = new GMapOverlay("positions");
             FlightData.instance.gMapControl1.Overlays.Insert(0, overlay);
 
+            MainV2.comPort.OnPacketReceived -= OnComPortOnOnPacketReceived;
+            MainV2.comPort.OnPacketReceived += OnComPortOnOnPacketReceived;
+
             return true;
-        }
-
-        private void but_Click(object sender2, EventArgs e)
-        {
-            loopratehz = 1;
-            active = !active;
-
-            if (active)
-            {
-                rootbut.Text = "Hide multiple positions";
-                overlay.IsVisibile = true;
-                // this needs to be set per "comport" - prevent any duplicates
-                MainV2.comPort.OnPacketReceived -= OnComPortOnOnPacketReceived;
-                MainV2.comPort.OnPacketReceived += OnComPortOnOnPacketReceived;
-
-            }
-            else
-            {
-                MainV2.comPort.OnPacketReceived -= OnComPortOnOnPacketReceived;
-                overlay.IsVisibile = false;
-                rootbut.Text = "Show multiple positions";
-            }
         }
 
         private void OnComPortOnOnPacketReceived(object sender, MAVLink.MAVLinkMessage message)
@@ -81,19 +77,19 @@ namespace MissionPlanner.plugins
                 case MAVLink.MAVLINK_MSG_ID.GPS_RAW_INT:
                     {
                         var pos = (MAVLink.mavlink_gps_raw_int_t)message.data;
-                        UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lon / 1e7), Host.cs.yaw, Host.cs.groundcourse, Host.cs.nav_bearing, Host.cs.target_bearing, ID, "GPS1", 2);
+                        UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lon / 1e7), pos.cog/100, float.NaN, float.NaN, float.NaN, ID, "GPS1", 2);
                         break;
                     }
                 case MAVLink.MAVLINK_MSG_ID.GPS2_RAW:
                     {
                         var pos = (MAVLink.mavlink_gps2_raw_t)message.data;
-                        UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lon / 1e7), Host.cs.yaw, Host.cs.groundcourse2, Host.cs.nav_bearing, Host.cs.target_bearing, ID, "GPS2", 2);
+                        UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lon / 1e7), pos.cog/100, float.NaN, float.NaN, float.NaN, ID, "GPS2", 3);
                         break;
                     }
                 case MAVLink.MAVLINK_MSG_ID.AHRS2:
                     {
                         var pos = (MAVLink.mavlink_ahrs2_t)message.data;
-                        UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lng / 1e7), pos.yaw * 180 / 3.1415f, pos.yaw * 180 / 3.1415f, Host.cs.nav_bearing, Host.cs.target_bearing, ID, "AHRS2", 5);
+                        UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lng / 1e7), pos.yaw * 180 / 3.1415f, float.NaN, float.NaN, float.NaN, ID, "AHRS2", 5);
                         break;
                     }
                 //case MAVLink.MAVLINK_MSG_ID.AHRS3:
@@ -117,7 +113,7 @@ namespace MissionPlanner.plugins
                 case MAVLink.MAVLINK_MSG_ID.SIMSTATE:
                 {
                     var pos = (MAVLink.mavlink_simstate_t)message.data;
-                    UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lng / 1e7), pos.yaw * 180 / 3.1415f, pos.yaw * 180 / 3.1415f, Host.cs.nav_bearing, Host.cs.target_bearing, ID, "SimState", 1);
+                    UpdateOrCreate(new PointLatLng(pos.lat / 1e7, pos.lng / 1e7), pos.yaw * 180 / 3.1415f, float.NaN, float.NaN, float.NaN, ID, "SimState", 1);
                     break;
                 }
                 //case MAVLink.MAVLINK_MSG_ID.SIM_STATE:
@@ -134,11 +130,6 @@ namespace MissionPlanner.plugins
                 //}
 
             }
-            if (active)
-            {
-                overlay.IsVisibile = true;
-            }
-            ;
         }
 
         private void UpdateOrCreate(PointLatLng pointLatLng, float heading, float cog, float nav_bearing, float target, int ID, string sourcetext = "", int color = 1)
@@ -146,50 +137,57 @@ namespace MissionPlanner.plugins
             var existing = overlay.Markers.Where(a => a.Tag.ToString() == ID.ToString() + sourcetext);
             if (existing.Count() > 0)
             {
-                existing.First().Position = pointLatLng;
-                ((GMapMarkerPlane)existing.First()).Heading = heading;
-                ((GMapMarkerPlane)existing.First()).Cog = cog;
-                ((GMapMarkerPlane)existing.First()).Target = nav_bearing;
-                ((GMapMarkerPlane)existing.First()).Nav_bearing = target;
-                ((GMapMarkerPlane_edit)existing.First()).LastUpdate = DateTime.Now;
+                var marker = (GMapMarkerPlane)existing.First();
+                marker.Position = pointLatLng;
+                marker.Heading = heading;
+                marker.Cog = cog;
+                marker.Target = nav_bearing;
+                marker.Nav_bearing = target;
+                ((GMapMarkerPlane_custom)marker).LastUpdate = DateTime.Now;
+                marker.IsVisible = displayItems[sourcetext];
             }
             else
             {
-                var marker = new GMapMarkerPlane_edit(pointLatLng, heading, cog, nav_bearing, target, color)
+                var marker = new GMapMarkerPlane_custom(pointLatLng, heading, cog, nav_bearing, target, color)
                 { Tag = ID.ToString() + sourcetext, ToolTipText = sourcetext, ToolTipMode = MarkerTooltipMode.OnMouseOver, LastUpdate = DateTime.Now };
-                //int index = overlay.Markers.Count;
                 overlay.Markers.Add(marker);
-
             }
-        }
-
-        public override bool Loaded()
-        {
-            return true;
         }
 
         public override bool Loop()
         {
             try
             {
+                var cutoff = DateTime.Now.AddSeconds(-10);
 
+                var stale = overlay.Markers
+                    .OfType<GMapMarkerPlane_custom>()
+                    .Where(m => m.LastUpdate < cutoff)
+                    .ToList();
+
+                foreach (var marker in stale)
+                {
+                    overlay.Markers.Remove(marker);
+                }
             }
             catch (Exception e)
             {
-
             }
 
             return true;
         }
     }
 
-    public class GMapMarkerPlane_edit : GMapMarkerPlane
+    public class GMapMarkerPlane_custom : GMapMarkerPlane
     {
         public DateTime LastUpdate = DateTime.MinValue;
-        public GMapMarkerPlane_edit(PointLatLng p, float heading, float cog, float nav_bearing, float target, int color) : base(color, p, heading, cog, nav_bearing, target, -1)
+        
+        public GMapMarkerPlane_custom(PointLatLng p, float heading, float cog, float nav_bearing, float target, int color) 
+            : base(color, p, heading, cog, nav_bearing, target, -1)
         {
-
+            GMapMarkerPlane_custom.DisplayHeadingSetting = false;
         }
 
     }
+
 }
