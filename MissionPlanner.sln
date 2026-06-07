@@ -225,10 +225,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MockDroneID", "ExtLibs\Mock
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TerrainMakerPlugin", "Plugins\TerrainMakerPlugin\TerrainMakerPlugin.csproj", "{DDD2FEA8-801E-463B-8913-9CCCDA2D9429}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SetExtPosPlugin", "Plugins\SetExtPosPlugin\SetExtPosPlugin.csproj", "{8B65AF7E-21A9-49C9-95DB-9C1DD325F457}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MultiplePositions", "Plugins\MultiplePositions\MultiplePositions\MultiplePositions.csproj", "{2063BA79-5A2F-4122-96EA-5094022917F2}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -560,14 +556,6 @@ Global
 		{DDD2FEA8-801E-463B-8913-9CCCDA2D9429}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DDD2FEA8-801E-463B-8913-9CCCDA2D9429}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DDD2FEA8-801E-463B-8913-9CCCDA2D9429}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8B65AF7E-21A9-49C9-95DB-9C1DD325F457}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8B65AF7E-21A9-49C9-95DB-9C1DD325F457}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8B65AF7E-21A9-49C9-95DB-9C1DD325F457}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8B65AF7E-21A9-49C9-95DB-9C1DD325F457}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2063BA79-5A2F-4122-96EA-5094022917F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2063BA79-5A2F-4122-96EA-5094022917F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2063BA79-5A2F-4122-96EA-5094022917F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2063BA79-5A2F-4122-96EA-5094022917F2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -654,8 +642,6 @@ Global
 		{AF81C41B-06E6-4CA5-9FD4-A4E7042F1107} = {7E264F12-9EC3-4CDC-A187-6879C2B2BFCF}
 		{6D39C141-733B-4C4A-87AB-974637952D1B} = {0371886E-5A61-4626-B9E0-50A837ECE2DD}
 		{DDD2FEA8-801E-463B-8913-9CCCDA2D9429} = {9B3AC501-5FCB-4A2A-A628-BE0985DB2BD4}
-		{8B65AF7E-21A9-49C9-95DB-9C1DD325F457} = {9B3AC501-5FCB-4A2A-A628-BE0985DB2BD4}
-		{2063BA79-5A2F-4122-96EA-5094022917F2} = {9B3AC501-5FCB-4A2A-A628-BE0985DB2BD4}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {FD2C9507-1A09-4F5B-98AB-B6B194A4B260}

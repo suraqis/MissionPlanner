@@ -388,12 +388,6 @@
     <None Include="plugins\example21-persistentsimple.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="plugins\setextpos.cs">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Include="plugins\multiplepositions.cs">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Include="plugins\example23-switch.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
